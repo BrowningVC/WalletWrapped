@@ -32,7 +32,7 @@ export const metadata: Metadata = {
     description: 'Your Solana trading year in review',
   },
   icons: {
-    icon: '/favicon.ico',
+    icon: '/favicon.svg',
   },
 };
 
