@@ -1,0 +1,31 @@
+{
+  "name": "wallet-wrapped",
+  "version": "1.0.0",
+  "description": "Solana wallet analytics platform with shareable trading highlights",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "start": "node server/src/index.js",
+    "build": "cd client && npm run build",
+    "build:all": "npm run build && cd server && npm install --production"
+  },
+  "keywords": [
+    "solana",
+    "analytics",
+    "wallet",
+    "trading",
+    "pnl",
+    "highlights"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
