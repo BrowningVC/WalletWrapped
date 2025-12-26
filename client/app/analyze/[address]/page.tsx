@@ -27,7 +27,7 @@ export default function AnalyzePage() {
     startAnalysis();
 
     // Connect to Socket.io
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001';
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
@@ -80,7 +80,7 @@ export default function AnalyzePage() {
 
   const startAnalysis = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
       const response = await fetch(`${apiUrl}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

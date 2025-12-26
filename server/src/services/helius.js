@@ -1,14 +1,58 @@
-const { Helius } = require('helius-sdk');
 const { PublicKey } = require('@solana/web3.js');
 const redis = require('../config/redis');
 require('dotenv').config();
 
-// Initialize Helius client
-const helius = new Helius(process.env.HELIUS_API_KEY);
+// Helius API base URL
+const HELIUS_API_URL = `https://api.helius.xyz/v0`;
+const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
+
+/**
+ * Make a Helius API POST request (for enhanced transactions)
+ */
+async function heliusPostRequest(endpoint, body = {}) {
+  const url = `${HELIUS_API_URL}${endpoint}?api-key=${process.env.HELIUS_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Make a Helius RPC request
+ */
+async function heliusRPC(method, params) {
+  const response = await fetch(HELIUS_RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method,
+      params
+    })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Helius RPC error: ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (data.error) {
+    throw new Error(`RPC error: ${data.error.message}`);
+  }
+  return data.result;
+}
 
 // Constants
-const BATCH_SIZE = 1000;
-const PARALLEL_REQUESTS = 5;
+const BATCH_SIZE = 100; // Reduced from 1000 to avoid URI/timeout issues
+const PARALLEL_REQUESTS = 3; // Reduced to avoid rate limits
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second base delay
 
@@ -95,26 +139,26 @@ class HeliusService {
    */
   static async fetchTransactionPage(walletAddress, beforeSignature = null, attempt = 1) {
     try {
-      const response = await helius.rpc.getSignaturesForAddress({
-        address: walletAddress,
-        limit: BATCH_SIZE,
-        before: beforeSignature
-      });
+      // Get signatures using RPC
+      const params = [walletAddress, { limit: BATCH_SIZE }];
+      if (beforeSignature) {
+        params[1].before = beforeSignature;
+      }
 
-      // Get full transaction details
+      const response = await heliusRPC('getSignaturesForAddress', params);
       const signatures = response.map(tx => tx.signature);
 
       if (signatures.length === 0) {
         return { transactions: [], hasMore: false };
       }
 
-      // Fetch parsed transaction data (Enhanced Transactions API)
-      const parsedTransactions = await helius.rpc.getParsedTransactions({
+      // Fetch parsed transaction data using Helius Enhanced Transactions API (POST)
+      const parsedTransactions = await heliusPostRequest('/transactions', {
         transactions: signatures
       });
 
       return {
-        transactions: parsedTransactions.filter(tx => tx !== null),
+        transactions: Array.isArray(parsedTransactions) ? parsedTransactions.filter(tx => tx !== null) : [],
         hasMore: response.length === BATCH_SIZE,
         cursor: response[response.length - 1]?.signature
       };
@@ -304,14 +348,27 @@ class HeliusService {
     }
 
     try {
-      const metadata = await helius.rpc.getAsset({ id: mint });
+      // Use Helius DAS API for asset metadata
+      const response = await fetch(HELIUS_RPC_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getAsset',
+          params: { id: mint }
+        })
+      });
+
+      const data = await response.json();
+      const metadata = data.result;
 
       const info = {
         mint,
-        symbol: metadata.content?.metadata?.symbol || 'UNKNOWN',
-        name: metadata.content?.metadata?.name || 'Unknown Token',
-        decimals: metadata.token_info?.decimals || 9,
-        supply: metadata.token_info?.supply || 0
+        symbol: metadata?.content?.metadata?.symbol || 'UNKNOWN',
+        name: metadata?.content?.metadata?.name || 'Unknown Token',
+        decimals: metadata?.token_info?.decimals || 9,
+        supply: metadata?.token_info?.supply || 0
       };
 
       // Cache for 7 days
@@ -342,11 +399,12 @@ class HeliusService {
     let cursor = null;
 
     while (true) {
-      const response = await helius.rpc.getSignaturesForAddress({
-        address: walletAddress,
-        limit: BATCH_SIZE,
-        before: cursor
-      });
+      const params = [walletAddress, { limit: BATCH_SIZE }];
+      if (cursor) {
+        params[1].before = cursor;
+      }
+
+      const response = await heliusRPC('getSignaturesForAddress', params);
 
       // Stop when we reach the afterSignature
       const stopIndex = response.findIndex(tx => tx.signature === afterSignature);

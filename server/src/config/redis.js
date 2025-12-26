@@ -96,7 +96,19 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+// Ping function for health checks
+async function ping() {
+  return await redis.ping();
+}
+
+// Disconnect function
+async function disconnect() {
+  return await redis.quit();
+}
+
 module.exports = {
   redis,
+  ping,
+  disconnect,
   ...redisHelpers
 };
