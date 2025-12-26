@@ -1,0 +1,382 @@
+const { Helius } = require('helius-sdk');
+const { PublicKey } = require('@solana/web3.js');
+const redis = require('../config/redis');
+require('dotenv').config();
+
+// Initialize Helius client
+const helius = new Helius(process.env.HELIUS_API_KEY);
+
+// Constants
+const BATCH_SIZE = 1000;
+const PARALLEL_REQUESTS = 5;
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 1000; // 1 second base delay
+
+// Solana native mint (SOL)
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+/**
+ * Helius Service - Handles all Solana blockchain data fetching via Helius API
+ */
+class HeliusService {
+  /**
+   * Validate a Solana wallet address
+   */
+  static isValidSolanaAddress(address) {
+    try {
+      new PublicKey(address);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Fetch all transactions for a wallet with parallel pagination
+   * @param {string} walletAddress - Solana wallet address
+   * @param {function} progressCallback - Called with (fetched, estimated) counts
+   * @param {string} beforeSignature - Optional: fetch only transactions before this signature
+   */
+  static async fetchAllTransactions(walletAddress, progressCallback = () => {}, beforeSignature = null) {
+    if (!this.isValidSolanaAddress(walletAddress)) {
+      throw new Error('Invalid Solana wallet address');
+    }
+
+    const allTransactions = [];
+    const seenSignatures = new Set(); // For deduplication
+    let cursors = [beforeSignature]; // Start with first page or specific signature
+    let totalFetched = 0;
+
+    console.log(`Starting transaction fetch for wallet: ${walletAddress}`);
+
+    while (cursors.length > 0) {
+      // Fetch up to 5 pages in parallel
+      const promises = cursors.slice(0, PARALLEL_REQUESTS).map(cursor =>
+        this.fetchTransactionPage(walletAddress, cursor)
+      );
+
+      const results = await Promise.all(promises);
+
+      // Process each batch
+      for (const result of results) {
+        if (!result || !result.transactions) continue;
+
+        // Deduplicate and add transactions
+        for (const tx of result.transactions) {
+          if (!seenSignatures.has(tx.signature)) {
+            seenSignatures.add(tx.signature);
+            allTransactions.push(tx);
+            totalFetched++;
+          }
+        }
+      }
+
+      // Update progress
+      progressCallback(totalFetched, totalFetched + 1000);
+
+      // Update cursors for next iteration
+      cursors = results
+        .filter(r => r && r.hasMore && r.cursor)
+        .map(r => r.cursor);
+
+      // Safety limit: stop at 50k transactions
+      if (totalFetched >= 50000) {
+        console.warn(`Reached transaction limit (50k) for wallet: ${walletAddress}`);
+        break;
+      }
+    }
+
+    console.log(`Fetched ${totalFetched} transactions for wallet: ${walletAddress}`);
+    return allTransactions;
+  }
+
+  /**
+   * Fetch a single page of transactions with retry logic
+   */
+  static async fetchTransactionPage(walletAddress, beforeSignature = null, attempt = 1) {
+    try {
+      const response = await helius.rpc.getSignaturesForAddress({
+        address: walletAddress,
+        limit: BATCH_SIZE,
+        before: beforeSignature
+      });
+
+      // Get full transaction details
+      const signatures = response.map(tx => tx.signature);
+
+      if (signatures.length === 0) {
+        return { transactions: [], hasMore: false };
+      }
+
+      // Fetch parsed transaction data (Enhanced Transactions API)
+      const parsedTransactions = await helius.rpc.getParsedTransactions({
+        transactions: signatures
+      });
+
+      return {
+        transactions: parsedTransactions.filter(tx => tx !== null),
+        hasMore: response.length === BATCH_SIZE,
+        cursor: response[response.length - 1]?.signature
+      };
+
+    } catch (error) {
+      // Retry with exponential backoff
+      if (attempt < MAX_RETRIES) {
+        const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
+        console.warn(`Retry attempt ${attempt} after ${delay}ms:`, error.message);
+        await this.sleep(delay);
+        return this.fetchTransactionPage(walletAddress, beforeSignature, attempt + 1);
+      }
+
+      console.error('Failed to fetch transaction page:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Parse and normalize a Helius enhanced transaction
+   * @param {object} heliusTx - Helius enhanced transaction object
+   * @param {string} walletAddress - The wallet address being analyzed
+   */
+  static parseTransaction(heliusTx, walletAddress) {
+    try {
+      // Classify transaction type
+      const classification = this.classifyTransaction(heliusTx, walletAddress);
+
+      // Skip SOL-only transfers and unknown types
+      if (classification.skip) {
+        return null;
+      }
+
+      // Extract basic info
+      const normalized = {
+        signature: heliusTx.signature,
+        blockTime: new Date(heliusTx.timestamp * 1000),
+        type: classification.type,
+        tokenMint: classification.tokenMint,
+        tokenSymbol: classification.tokenSymbol || 'UNKNOWN',
+        solAmount: 0,
+        tokenAmount: 0,
+        priceSol: 0,
+        feeSol: heliusTx.fee / 1e9, // Convert lamports to SOL
+        isEstimated: false,
+        rawData: heliusTx
+      };
+
+      // Parse transaction details based on type
+      if (classification.type === 'BUY' || classification.type === 'SELL') {
+        this.parseSwapDetails(heliusTx, normalized, walletAddress);
+      } else if (classification.type === 'TRANSFER_OUT' || classification.type === 'TRANSFER_IN') {
+        this.parseTransferDetails(heliusTx, normalized, walletAddress);
+      }
+
+      // Calculate effective price
+      if (normalized.tokenAmount > 0 && normalized.solAmount > 0) {
+        normalized.priceSol = normalized.solAmount / normalized.tokenAmount;
+      }
+
+      return normalized;
+
+    } catch (error) {
+      console.error('Error parsing transaction:', error, heliusTx.signature);
+      return null;
+    }
+  }
+
+  /**
+   * Classify transaction type based on Helius data
+   * CRITICAL: Filters out SOL-only transfers
+   */
+  static classifyTransaction(heliusTx, walletAddress) {
+    const nativeTransfers = heliusTx.nativeTransfers || [];
+    const tokenTransfers = heliusTx.tokenTransfers || [];
+
+    // PRIORITY 1: Filter out SOL-only transfers (DO NOT count for P&L)
+    if (tokenTransfers.length === 0) {
+      return { type: 'SOL_TRANSFER', skip: true };
+    }
+
+    // PRIORITY 2: Detect token swaps (BUY/SELL)
+    if (heliusTx.type === 'SWAP' || this.hasSwapInstructions(heliusTx)) {
+      const tokenTransfer = tokenTransfers.find(t => t.tokenStandard === 'Fungible');
+      if (!tokenTransfer) return { type: 'UNKNOWN', skip: true };
+
+      // Determine if buying or selling based on token flow direction
+      const isBuying = tokenTransfer.toUserAccount === walletAddress;
+
+      return {
+        type: isBuying ? 'BUY' : 'SELL',
+        tokenMint: tokenTransfer.mint,
+        tokenSymbol: tokenTransfer.tokenSymbol,
+        skip: false
+      };
+    }
+
+    // PRIORITY 3: Token transfers (only if token is involved)
+    if (tokenTransfers.length > 0) {
+      const tokenTransfer = tokenTransfers[0];
+      const isOutgoing = tokenTransfer.fromUserAccount === walletAddress;
+
+      return {
+        type: isOutgoing ? 'TRANSFER_OUT' : 'TRANSFER_IN',
+        tokenMint: tokenTransfer.mint,
+        tokenSymbol: tokenTransfer.tokenSymbol,
+        skip: false
+      };
+    }
+
+    return { type: 'UNKNOWN', skip: true };
+  }
+
+  /**
+   * Check if transaction contains swap instructions
+   */
+  static hasSwapInstructions(heliusTx) {
+    const instructions = heliusTx.instructions || [];
+    return instructions.some(ix =>
+      ix.programId?.includes('swap') ||
+      ix.programId?.includes('Jupiter') ||
+      ix.programId?.includes('Raydium')
+    );
+  }
+
+  /**
+   * Parse swap transaction details (BUY/SELL)
+   */
+  static parseSwapDetails(heliusTx, normalized, walletAddress) {
+    const nativeTransfers = heliusTx.nativeTransfers || [];
+    const tokenTransfers = heliusTx.tokenTransfers || [];
+
+    // Find SOL amount (sum of all SOL transfers)
+    let solIn = 0;
+    let solOut = 0;
+
+    for (const transfer of nativeTransfers) {
+      if (transfer.fromUserAccount === walletAddress) {
+        solIn += transfer.amount / 1e9; // Convert lamports to SOL
+      }
+      if (transfer.toUserAccount === walletAddress) {
+        solOut += transfer.amount / 1e9;
+      }
+    }
+
+    // Find token amount
+    const tokenTransfer = tokenTransfers.find(t =>
+      t.mint === normalized.tokenMint && t.tokenStandard === 'Fungible'
+    );
+
+    if (tokenTransfer) {
+      // Convert based on token decimals
+      const decimals = tokenTransfer.decimals || 9;
+      normalized.tokenAmount = tokenTransfer.tokenAmount / Math.pow(10, decimals);
+    }
+
+    // Set SOL amount based on buy/sell
+    if (normalized.type === 'BUY') {
+      normalized.solAmount = solIn; // SOL spent
+    } else {
+      normalized.solAmount = solOut; // SOL received
+    }
+  }
+
+  /**
+   * Parse transfer transaction details
+   */
+  static parseTransferDetails(heliusTx, normalized, walletAddress) {
+    const tokenTransfers = heliusTx.tokenTransfers || [];
+    const tokenTransfer = tokenTransfers.find(t => t.mint === normalized.tokenMint);
+
+    if (tokenTransfer) {
+      const decimals = tokenTransfer.decimals || 9;
+      normalized.tokenAmount = tokenTransfer.tokenAmount / Math.pow(10, decimals);
+      normalized.isEstimated = normalized.type === 'TRANSFER_OUT'; // Mark transfers out as estimated
+    }
+  }
+
+  /**
+   * Get token metadata from Helius (with Redis cache)
+   */
+  static async getTokenMetadata(mint) {
+    // Check cache first
+    const cached = await redis.get(`token:${mint}:metadata`);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const metadata = await helius.rpc.getAsset({ id: mint });
+
+      const info = {
+        mint,
+        symbol: metadata.content?.metadata?.symbol || 'UNKNOWN',
+        name: metadata.content?.metadata?.name || 'Unknown Token',
+        decimals: metadata.token_info?.decimals || 9,
+        supply: metadata.token_info?.supply || 0
+      };
+
+      // Cache for 7 days
+      await redis.setex(`token:${mint}:metadata`, 604800, info);
+      return info;
+
+    } catch (error) {
+      console.error(`Failed to fetch metadata for ${mint}:`, error.message);
+      return {
+        mint,
+        symbol: 'UNKNOWN',
+        name: 'Unknown Token',
+        decimals: 9,
+        supply: 0
+      };
+    }
+  }
+
+  /**
+   * Fetch transactions after a specific signature (for incremental updates)
+   */
+  static async getTransactionsAfter(walletAddress, afterSignature) {
+    if (!this.isValidSolanaAddress(walletAddress)) {
+      throw new Error('Invalid Solana wallet address');
+    }
+
+    const transactions = [];
+    let cursor = null;
+
+    while (true) {
+      const response = await helius.rpc.getSignaturesForAddress({
+        address: walletAddress,
+        limit: BATCH_SIZE,
+        before: cursor
+      });
+
+      // Stop when we reach the afterSignature
+      const stopIndex = response.findIndex(tx => tx.signature === afterSignature);
+
+      if (stopIndex !== -1) {
+        // Only take transactions before the stopIndex
+        const newTransactions = response.slice(0, stopIndex);
+        transactions.push(...newTransactions);
+        break;
+      }
+
+      transactions.push(...response);
+
+      if (response.length < BATCH_SIZE) {
+        break; // No more transactions
+      }
+
+      cursor = response[response.length - 1].signature;
+    }
+
+    console.log(`Fetched ${transactions.length} new transactions since ${afterSignature}`);
+    return transactions;
+  }
+
+  /**
+   * Helper: Sleep for specified milliseconds
+   */
+  static sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+module.exports = HeliusService;
