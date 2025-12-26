@@ -147,13 +147,19 @@ class HeliusService {
         return { transactions: [], hasMore: false };
       }
 
-      // Chunk signatures into batches of 100 for Enhanced Transactions API
-      const allParsedTransactions = [];
+      // Chunk signatures into batches of 100 for Enhanced Transactions API (parallel)
+      const chunks = [];
       for (let i = 0; i < signatures.length; i += ENHANCED_TX_BATCH_SIZE) {
-        const chunk = signatures.slice(i, i + ENHANCED_TX_BATCH_SIZE);
-        const parsedChunk = await heliusPostRequest('/transactions', {
-          transactions: chunk
-        });
+        chunks.push(signatures.slice(i, i + ENHANCED_TX_BATCH_SIZE));
+      }
+
+      // Fetch all chunks in parallel
+      const chunkResults = await Promise.all(
+        chunks.map(chunk => heliusPostRequest('/transactions', { transactions: chunk }))
+      );
+
+      const allParsedTransactions = [];
+      for (const parsedChunk of chunkResults) {
         if (Array.isArray(parsedChunk)) {
           allParsedTransactions.push(...parsedChunk.filter(tx => tx !== null));
         }
