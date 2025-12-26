@@ -4,12 +4,13 @@
   "description": "WalletWrapped frontend",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 3001",
+    "start": "next start",
     "lint": "next lint"
   },
   "dependencies": {
+    "@solana/web3.js": "^1.98.0",
     "@vercel/og": "^0.6.3",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.15.0",
