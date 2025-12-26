@@ -62,7 +62,7 @@ psql -U postgres -d walletwrapped -f src/database/schema.sql
 npm run dev
 ```
 
-The API will be available at `http://localhost:3000` and the frontend at `http://localhost:3001`.
+The frontend will be available at `http://localhost:3000` and the API at `http://localhost:3002`.
 
 ## Development
 

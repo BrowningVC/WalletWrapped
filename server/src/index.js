@@ -23,7 +23,7 @@ const { startWorker, setSocketIO } = require('./workers/analysisWorker');
 const { cleanOldJobs, getQueueStats } = require('./workers/queue');
 
 // Constants
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 3002;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 
