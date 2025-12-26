@@ -55,7 +55,6 @@ const BATCH_SIZE = 500; // Helius supports up to 1000 per request
 const PARALLEL_REQUESTS = 5; // Parallel signature fetches
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 500ms base delay
-const MAX_TRANSACTIONS = 10000; // Limit for faster results on whale wallets
 
 // Solana native mint (SOL)
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -123,12 +122,6 @@ class HeliusService {
       cursors = results
         .filter(r => r && r.hasMore && r.cursor)
         .map(r => r.cursor);
-
-      // Safety limit: stop at MAX_TRANSACTIONS for faster results
-      if (totalFetched >= MAX_TRANSACTIONS) {
-        console.warn(`Reached transaction limit (${MAX_TRANSACTIONS}) for wallet: ${walletAddress}`);
-        break;
-      }
     }
 
     console.log(`Fetched ${totalFetched} transactions for wallet: ${walletAddress}`);
