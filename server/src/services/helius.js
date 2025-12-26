@@ -51,7 +51,8 @@ async function heliusRPC(method, params) {
 }
 
 // Constants - Optimized for speed
-const BATCH_SIZE = 500; // Helius supports up to 1000 per request
+const SIGNATURE_BATCH_SIZE = 500; // RPC getSignaturesForAddress limit (can be up to 1000)
+const ENHANCED_TX_BATCH_SIZE = 100; // Helius Enhanced Transactions API limit
 const PARALLEL_REQUESTS = 5; // Parallel signature fetches
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 500ms base delay
@@ -133,8 +134,8 @@ class HeliusService {
    */
   static async fetchTransactionPage(walletAddress, beforeSignature = null, attempt = 1) {
     try {
-      // Get signatures using RPC
-      const params = [walletAddress, { limit: BATCH_SIZE }];
+      // Get signatures using RPC (can fetch up to 500 at once)
+      const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
       if (beforeSignature) {
         params[1].before = beforeSignature;
       }
@@ -146,14 +147,21 @@ class HeliusService {
         return { transactions: [], hasMore: false };
       }
 
-      // Fetch parsed transaction data using Helius Enhanced Transactions API (POST)
-      const parsedTransactions = await heliusPostRequest('/transactions', {
-        transactions: signatures
-      });
+      // Chunk signatures into batches of 100 for Enhanced Transactions API
+      const allParsedTransactions = [];
+      for (let i = 0; i < signatures.length; i += ENHANCED_TX_BATCH_SIZE) {
+        const chunk = signatures.slice(i, i + ENHANCED_TX_BATCH_SIZE);
+        const parsedChunk = await heliusPostRequest('/transactions', {
+          transactions: chunk
+        });
+        if (Array.isArray(parsedChunk)) {
+          allParsedTransactions.push(...parsedChunk.filter(tx => tx !== null));
+        }
+      }
 
       return {
-        transactions: Array.isArray(parsedTransactions) ? parsedTransactions.filter(tx => tx !== null) : [],
-        hasMore: response.length === BATCH_SIZE,
+        transactions: allParsedTransactions,
+        hasMore: response.length === SIGNATURE_BATCH_SIZE,
         cursor: response[response.length - 1]?.signature
       };
 
