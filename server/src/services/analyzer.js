@@ -36,7 +36,7 @@ class WalletAnalyzer {
       progressCallback(40, `Parsing ${rawTransactions.length} transactions...`);
 
       // Step 2: Parse and normalize transactions (40-50%)
-      const normalizedTransactions = this.parseTransactionsStream(
+      const normalizedTransactions = await this.parseTransactionsStream(
         rawTransactions,
         walletAddress,
         (processed, total) => {
@@ -88,12 +88,12 @@ class WalletAnalyzer {
   /**
    * Parse transactions in streaming fashion (memory efficient)
    */
-  static parseTransactionsStream(rawTransactions, walletAddress, progressCallback = () => {}) {
+  static async parseTransactionsStream(rawTransactions, walletAddress, progressCallback = () => {}) {
     const normalized = [];
     const total = rawTransactions.length;
 
     for (let i = 0; i < total; i++) {
-      const parsed = HeliusService.parseTransaction(rawTransactions[i], walletAddress);
+      const parsed = await HeliusService.parseTransaction(rawTransactions[i], walletAddress);
 
       if (parsed) {
         // Add wallet address to each transaction
@@ -223,7 +223,7 @@ class WalletAnalyzer {
     progressCallback(30, `Processing ${newTransactions.length} new transactions...`);
 
     // Parse new transactions
-    const normalized = this.parseTransactionsStream(
+    const normalized = await this.parseTransactionsStream(
       newTransactions,
       walletAddress
     );

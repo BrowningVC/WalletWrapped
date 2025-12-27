@@ -1,20 +1,31 @@
 const PriceOracle = require('./priceOracle');
 
+// WSOL mint address
+const WSOL_MINT = 'So11111111111111111111111111111111111111112';
+
 /**
- * PNL Calculator - FIFO cost basis calculation with partial sell support
- * Handles unrealized P&L for current holdings
+ * PNL Calculator - Net SOL Flow (primary) + FIFO cost basis (per-token)
+ * Net SOL Flow tracks actual SOL entering/leaving wallet - matches GMGN methodology
+ * FIFO provides per-token P&L breakdown
  */
 class PNLCalculator {
   /**
    * Calculate P&L for all token positions
    * @param {Array} transactions - Array of normalized transactions
    * @param {string} walletAddress - Wallet address being analyzed
-   * @returns {Object} { positions, dailyPNL, summary }
+   * @returns {Object} { positions, dailyPNL, summary, netSolFlow }
    */
   static async calculate(transactions, walletAddress) {
     const positions = {};
     const dailyPNL = {};
     const seenSignatures = new Set();
+
+    // Net SOL Flow tracking - primary P&L method (matches GMGN)
+    const solFlow = {
+      nativeSolIn: 0,      // SOL received (sells, incoming transfers)
+      nativeSolOut: 0,     // SOL spent (buys, outgoing transfers, fees)
+      totalFees: 0         // All transaction fees
+    };
 
     // Sort transactions by time (oldest first) for FIFO
     const sortedTxs = transactions
@@ -30,10 +41,20 @@ class PNLCalculator {
       }
       seenSignatures.add(tx.signature);
 
-      // Skip SOL-only transfers
+      // Track fees for all transactions
+      if (tx.feeSol > 0) {
+        solFlow.totalFees += tx.feeSol;
+        solFlow.nativeSolOut += tx.feeSol;
+      }
+
+      // Skip SOL-only transfers for position tracking (but still count fees above)
       if (tx.type === 'SOL_TRANSFER' || !tx.tokenMint) {
         continue;
       }
+
+      // Track Net SOL Flow (primary P&L method)
+      // This measures actual SOL leaving/entering wallet
+      this.trackSolFlow(solFlow, tx);
 
       // Initialize position if needed
       if (!positions[tx.tokenMint]) {
@@ -42,7 +63,7 @@ class PNLCalculator {
 
       const position = positions[tx.tokenMint];
 
-      // Update position based on transaction type
+      // Update position based on transaction type (FIFO method for per-token P&L)
       await this.processTransaction(position, tx);
 
       // Update daily P&L (only for sells/transfers)
@@ -54,10 +75,41 @@ class PNLCalculator {
     // Calculate unrealized P&L for all active positions
     await this.calculateUnrealizedPNL(positions);
 
-    // Calculate summary statistics
-    const summary = this.calculateSummary(positions);
+    // Calculate current holdings value and remaining cost basis
+    const activePositions = Object.values(positions).filter(p => p.isActive);
+    const currentHoldingsValue = activePositions.reduce((sum, p) => sum + (p.currentValueSol || 0), 0);
+    const remainingCostBasis = activePositions.reduce((sum, p) => {
+      // Sum up cost basis from remaining buy lots
+      const lotCost = p.buyLots.reduce((s, lot) => s + lot.costBasisSol, 0);
+      return sum + lotCost;
+    }, 0);
 
-    return { positions, dailyPNL, summary };
+    // Net SOL Flow P&L calculation (primary method - matches GMGN)
+    // Realized P&L: SOL received from sells - SOL spent on buys (not including current holdings cost)
+    // The cost of current holdings is tracked separately
+    const netSolFlowPNL = {
+      solIn: solFlow.nativeSolIn,
+      solOut: solFlow.nativeSolOut,
+      totalFees: solFlow.totalFees,
+      currentHoldingsValue,
+      remainingCostBasis,
+      // Realized = SOL from sells - (SOL for buys that are now sold)
+      // This is: total SOL in - (total SOL out - remaining cost basis)
+      // = solIn - solOut + remainingCostBasis
+      realizedPNL: solFlow.nativeSolIn - (solFlow.nativeSolOut - remainingCostBasis),
+      // Unrealized = current holdings value - remaining cost basis
+      unrealizedPNL: currentHoldingsValue - remainingCostBasis,
+      // Total P&L = Realized + Unrealized = solIn - solOut + currentHoldingsValue
+      totalPNL: solFlow.nativeSolIn - solFlow.nativeSolOut + currentHoldingsValue
+    };
+
+    console.log(`Net SOL Flow: in=${netSolFlowPNL.solIn.toFixed(4)}, out=${netSolFlowPNL.solOut.toFixed(4)}, costBasis=${remainingCostBasis.toFixed(4)}, holdings=${currentHoldingsValue.toFixed(4)}`);
+    console.log(`Realized: ${netSolFlowPNL.realizedPNL.toFixed(4)}, Unrealized: ${netSolFlowPNL.unrealizedPNL.toFixed(4)}, Total: ${netSolFlowPNL.totalPNL.toFixed(4)}`);
+
+    // Calculate summary statistics (uses Net SOL Flow as primary, FIFO as fallback)
+    const summary = this.calculateSummary(positions, netSolFlowPNL);
+
+    return { positions, dailyPNL, summary, netSolFlow: netSolFlowPNL };
   }
 
   /**
@@ -90,6 +142,37 @@ class PNLCalculator {
         hasMEVActivity: false
       }
     };
+  }
+
+  /**
+   * Track SOL flow for Net SOL Flow P&L calculation
+   * This tracks actual SOL entering/leaving the wallet (matches GMGN methodology)
+   */
+  static trackSolFlow(solFlow, tx) {
+    // For BUY: SOL leaves wallet (spent)
+    // For SELL: SOL enters wallet (received)
+    // Note: We track the solAmount which represents actual SOL movement
+
+    switch (tx.type) {
+      case 'BUY':
+        // SOL spent on buying tokens
+        solFlow.nativeSolOut += tx.solAmount;
+        break;
+
+      case 'SELL':
+        // SOL received from selling tokens
+        solFlow.nativeSolIn += tx.solAmount;
+        break;
+
+      case 'TRANSFER_IN':
+        // Token transferred in - no SOL movement
+        // (The token has value but no SOL was exchanged)
+        break;
+
+      case 'TRANSFER_OUT':
+        // Token transferred out - no SOL movement
+        break;
+    }
   }
 
   /**
@@ -203,6 +286,10 @@ class PNLCalculator {
     const proceeds = tx.solAmount - tx.feeSol;
     const realizedPnl = proceeds - totalCostBasis;
 
+    // Store P&L on the trade for daily tracking
+    tx.realizedPnl = realizedPnl;
+    tx.costBasis = totalCostBasis;
+
     // Update position
     position.realizedPNL += realizedPnl;
     position.solReceived += tx.solAmount;
@@ -293,17 +380,22 @@ class PNLCalculator {
       const position = positions[mint];
       const currentPrice = prices[mint] || 0;
 
+      // Remaining cost basis from unsold lots
+      const remainingCostBasis = position.buyLots.reduce(
+        (sum, lot) => sum + lot.costBasisSol,
+        0
+      );
+
       if (currentPrice > 0 && position.currentBalance > 0) {
         position.currentPriceSol = currentPrice;
         position.currentValueSol = position.currentBalance * currentPrice;
-
-        // Remaining cost basis from unsold lots
-        const remainingCostBasis = position.buyLots.reduce(
-          (sum, lot) => sum + lot.costBasisSol,
-          0
-        );
-
         position.unrealizedPNL = position.currentValueSol - remainingCostBasis;
+      } else if (position.currentBalance > 0 && remainingCostBasis > 0) {
+        // Price unavailable but we have tokens with cost basis
+        // Treat as unrealized loss equal to cost basis (conservative: assume worthless)
+        position.currentPriceSol = 0;
+        position.currentValueSol = 0;
+        position.unrealizedPNL = -remainingCostBasis; // Negative = loss
       }
     }
   }
@@ -334,10 +426,12 @@ class PNLCalculator {
 
   /**
    * Calculate summary statistics
+   * Uses Net SOL Flow as primary P&L (matches GMGN), FIFO as fallback
    */
-  static calculateSummary(positions) {
-    let totalRealizedPNL = 0;
-    let totalUnrealizedPNL = 0;
+  static calculateSummary(positions, netSolFlowPNL = null) {
+    // FIFO-based P&L (per-token aggregation - used as fallback)
+    let fifoRealizedPNL = 0;
+    let fifoUnrealizedPNL = 0;
     let activePositions = 0;
     let closedPositions = 0;
     let profitablePositions = 0;
@@ -347,8 +441,8 @@ class PNLCalculator {
       const pos = positions[mint];
       totalPositions++;
 
-      totalRealizedPNL += pos.realizedPNL;
-      totalUnrealizedPNL += pos.unrealizedPNL;
+      fifoRealizedPNL += pos.realizedPNL;
+      fifoUnrealizedPNL += pos.unrealizedPNL;
 
       if (pos.isActive) {
         activePositions++;
@@ -364,15 +458,29 @@ class PNLCalculator {
       ? (profitablePositions / closedPositions) * 100
       : 0;
 
+    // Use Net SOL Flow as primary (more accurate for overall P&L)
+    // Fall back to FIFO if Net SOL Flow not available
+    const totalRealizedPNL = netSolFlowPNL ? netSolFlowPNL.realizedPNL : fifoRealizedPNL;
+    const totalUnrealizedPNL = netSolFlowPNL ? netSolFlowPNL.unrealizedPNL : fifoUnrealizedPNL;
+    const totalPNL = netSolFlowPNL ? netSolFlowPNL.totalPNL : (fifoRealizedPNL + fifoUnrealizedPNL);
+
     return {
+      // Primary P&L values (Net SOL Flow method)
       totalRealizedPNL,
       totalUnrealizedPNL,
-      totalPNL: totalRealizedPNL + totalUnrealizedPNL,
+      totalPNL,
+      // FIFO values preserved for per-token analysis
+      fifoRealizedPNL,
+      fifoUnrealizedPNL,
+      fifoTotalPNL: fifoRealizedPNL + fifoUnrealizedPNL,
+      // Position counts
       activePositions,
       closedPositions,
       totalPositions,
       profitablePositions,
-      winRate: Math.round(winRate * 100) / 100 // Round to 2 decimals
+      winRate: Math.round(winRate * 100) / 100, // Round to 2 decimals
+      // Method indicator
+      pnlMethod: netSolFlowPNL ? 'NET_SOL_FLOW' : 'FIFO'
     };
   }
 

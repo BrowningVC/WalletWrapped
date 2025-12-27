@@ -3,11 +3,13 @@ const { query } = require('../config/database');
 require('dotenv').config();
 
 const JUPITER_API_URL = process.env.JUPITER_API_URL || 'https://price.jup.ag/v6';
+const SOLSCAN_API_URL = 'https://pro-api.solscan.io/v2.0';
+const DEXSCREENER_API_URL = 'https://api.dexscreener.com/latest/dex';
 const PRICE_CACHE_TTL = 60; // 1 minute cache for current prices
 
 /**
  * Price Oracle - Multi-source token price fetcher
- * Priority: Jupiter → Birdeye → Helius → Last Known Price
+ * Priority: DexScreener → Jupiter → Birdeye → Solscan → Last Known Price
  */
 class PriceOracle {
   /**
@@ -23,9 +25,12 @@ class PriceOracle {
     }
 
     // Try multiple sources in order of reliability
+    // Priority: DexScreener → Jupiter → Birdeye → Solscan → Last Known Price
     const sources = [
+      () => this.getDexScreenerPrice(mint),
       () => this.getJupiterPrice(mint),
       () => this.getBirdeyePrice(mint),
+      () => this.getSolscanPrice(mint),
       () => this.getLastKnownPrice(mint)
     ];
 
@@ -103,6 +108,46 @@ class PriceOracle {
   }
 
   /**
+   * Get price from Solscan API
+   */
+  static async getSolscanPrice(mint) {
+    const apiKey = process.env.SOLSCAN_API_KEY;
+    if (!apiKey) {
+      return 0;
+    }
+
+    try {
+      const response = await fetch(
+        `${SOLSCAN_API_URL}/token/meta?address=${mint}`,
+        {
+          headers: {
+            'token': apiKey
+          }
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`Solscan API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.success && data.data && data.data.price) {
+        // Solscan returns price in USD, convert to SOL
+        const solPrice = await this.getSolPriceUSD();
+        if (solPrice > 0) {
+          return data.data.price / solPrice;
+        }
+      }
+
+      return 0;
+    } catch (error) {
+      console.error('Solscan price fetch error:', error.message);
+      return 0;
+    }
+  }
+
+  /**
    * Get price from Birdeye API
    */
   static async getBirdeyePrice(mint) {
@@ -138,6 +183,41 @@ class PriceOracle {
       return 0;
     } catch (error) {
       console.error('Birdeye price fetch error:', error.message);
+      return 0;
+    }
+  }
+
+  /**
+   * Get price from DexScreener API (free, no API key required)
+   */
+  static async getDexScreenerPrice(mint) {
+    try {
+      const response = await fetch(`${DEXSCREENER_API_URL}/tokens/${mint}`);
+
+      if (!response.ok) {
+        throw new Error(`DexScreener API error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (data.pairs && data.pairs.length > 0) {
+        // Get the pair with highest liquidity
+        const bestPair = data.pairs.sort((a, b) =>
+          (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+        )[0];
+
+        if (bestPair.priceUsd) {
+          // Convert USD price to SOL
+          const solPrice = await this.getSolPriceUSD();
+          if (solPrice > 0) {
+            return parseFloat(bestPair.priceUsd) / solPrice;
+          }
+        }
+      }
+
+      return 0;
+    } catch (error) {
+      console.error('DexScreener price fetch error:', error.message);
       return 0;
     }
   }
@@ -179,40 +259,146 @@ class PriceOracle {
       return parseFloat(cached);
     }
 
-    try {
-      // Use Jupiter to get SOL price
-      const SOL_MINT = 'So11111111111111111111111111111111111111112';
-      const response = await fetch(`${JUPITER_API_URL}/price?ids=${SOL_MINT}`);
+    // Try multiple sources
+    // Priority: DexScreener → Jupiter → CoinGecko → Solscan → Database
+    const sources = [
+      () => this.getSolPriceFromDexScreener(),
+      () => this.getSolPriceFromJupiter(),
+      () => this.getSolPriceFromCoinGecko(),
+      () => this.getSolPriceFromSolscan(),
+      () => this.getSolPriceFromDatabase()
+    ];
 
-      if (!response.ok) {
-        throw new Error(`Jupiter API error: ${response.status}`);
+    for (const source of sources) {
+      try {
+        const price = await source();
+        if (price > 0) {
+          // Cache for 1 minute
+          await redis.setex('sol:price:usd', 60, price.toString());
+          return price;
+        }
+      } catch (error) {
+        console.error('SOL price source error:', error.message);
+        continue;
       }
-
-      const data = await response.json();
-
-      if (data.data && data.data[SOL_MINT]) {
-        const price = data.data[SOL_MINT].price;
-        // Cache for 1 minute
-        await redis.setex('sol:price:usd', 60, price.toString());
-        return price;
-      }
-
-      // Fallback: check database for recent price
-      const result = await query(
-        `SELECT price_usd FROM sol_prices ORDER BY date DESC LIMIT 1`
-      );
-
-      if (result.rows.length > 0) {
-        return parseFloat(result.rows[0].price_usd);
-      }
-
-      // Default fallback (update this periodically)
-      return 100; // Approximate SOL price
-
-    } catch (error) {
-      console.error('SOL price fetch error:', error.message);
-      return 100; // Fallback
     }
+
+    // Default fallback
+    console.warn('All SOL price sources failed, using fallback of $120');
+    return 120;
+  }
+
+  /**
+   * Get SOL price from Jupiter
+   */
+  static async getSolPriceFromJupiter() {
+    const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const response = await fetch(`${JUPITER_API_URL}/price?ids=${SOL_MINT}`);
+
+    if (!response.ok) {
+      throw new Error(`Jupiter API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.data && data.data[SOL_MINT]) {
+      return data.data[SOL_MINT].price;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Get SOL price from DexScreener
+   */
+  static async getSolPriceFromDexScreener() {
+    const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const response = await fetch(`${DEXSCREENER_API_URL}/tokens/${SOL_MINT}`);
+
+    if (!response.ok) {
+      throw new Error(`DexScreener API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.pairs && data.pairs.length > 0) {
+      // Get price from highest liquidity pair
+      const bestPair = data.pairs.sort((a, b) =>
+        (b.liquidity?.usd || 0) - (a.liquidity?.usd || 0)
+      )[0];
+
+      if (bestPair.priceUsd) {
+        return parseFloat(bestPair.priceUsd);
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * Get SOL price from Solscan
+   */
+  static async getSolPriceFromSolscan() {
+    const apiKey = process.env.SOLSCAN_API_KEY;
+    if (!apiKey) {
+      return 0;
+    }
+
+    const SOL_MINT = 'So11111111111111111111111111111111111111112';
+    const response = await fetch(
+      `${SOLSCAN_API_URL}/token/meta?address=${SOL_MINT}`,
+      {
+        headers: {
+          'token': apiKey
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Solscan API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.success && data.data && data.data.price) {
+      return data.data.price;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Get SOL price from CoinGecko (fallback)
+   */
+  static async getSolPriceFromCoinGecko() {
+    const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+
+    if (!response.ok) {
+      throw new Error(`CoinGecko API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    if (data.solana && data.solana.usd) {
+      return data.solana.usd;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Get SOL price from database
+   */
+  static async getSolPriceFromDatabase() {
+    const result = await query(
+      `SELECT price_usd FROM sol_prices ORDER BY date DESC LIMIT 1`
+    );
+
+    if (result.rows.length > 0) {
+      return parseFloat(result.rows[0].price_usd);
+    }
+
+    return 0;
   }
 
   /**

@@ -187,7 +187,7 @@ class HeliusService {
    * @param {object} heliusTx - Helius enhanced transaction object
    * @param {string} walletAddress - The wallet address being analyzed
    */
-  static parseTransaction(heliusTx, walletAddress) {
+  static async parseTransaction(heliusTx, walletAddress) {
     try {
       // Classify transaction type
       const classification = this.classifyTransaction(heliusTx, walletAddress);
@@ -197,13 +197,20 @@ class HeliusService {
         return null;
       }
 
+      // Get token symbol - fetch from metadata if not provided
+      let tokenSymbol = classification.tokenSymbol;
+      if (!tokenSymbol || tokenSymbol === 'UNKNOWN' || tokenSymbol === '') {
+        const metadata = await this.getTokenMetadata(classification.tokenMint);
+        tokenSymbol = metadata.symbol || 'UNKNOWN';
+      }
+
       // Extract basic info
       const normalized = {
         signature: heliusTx.signature,
         blockTime: new Date(heliusTx.timestamp * 1000),
         type: classification.type,
         tokenMint: classification.tokenMint,
-        tokenSymbol: classification.tokenSymbol || 'UNKNOWN',
+        tokenSymbol,
         solAmount: 0,
         tokenAmount: 0,
         priceSol: 0,
@@ -245,36 +252,63 @@ class HeliusService {
       return { type: 'SOL_TRANSFER', skip: true };
     }
 
+    // Find non-SOL token transfers (the actual meme coins)
+    const nonSolTokenTransfers = tokenTransfers.filter(t =>
+      t.tokenStandard === 'Fungible' && t.mint !== SOL_MINT
+    );
+
+    // CRITICAL: Find the token transfer that involves THIS wallet specifically
+    // In multi-recipient transactions (airdrops), we need to find OUR transfer
+    const walletTokenTransfer = nonSolTokenTransfers.find(t =>
+      t.toUserAccount === walletAddress || t.fromUserAccount === walletAddress
+    );
+
+    // If no token transfer involves this wallet, skip
+    if (!walletTokenTransfer) {
+      return { type: 'UNKNOWN', skip: true };
+    }
+
+    // Determine direction based on the wallet's specific transfer
+    const isReceiving = walletTokenTransfer.toUserAccount === walletAddress;
+    const isSending = walletTokenTransfer.fromUserAccount === walletAddress;
+
+    // Find SOL/WSOL transfers specifically from/to the wallet
+    const walletNativeOut = nativeTransfers.filter(t => t.fromUserAccount === walletAddress);
+    const walletNativeIn = nativeTransfers.filter(t => t.toUserAccount === walletAddress);
+    const wsolTransfers = tokenTransfers.filter(t => t.mint === SOL_MINT);
+    const walletWsolOut = wsolTransfers.filter(t => t.fromUserAccount === walletAddress);
+    const walletWsolIn = wsolTransfers.filter(t => t.toUserAccount === walletAddress);
+
+    // Has SOL movement FROM wallet (spent SOL) or TO wallet (received SOL)
+    const walletSpentSol = walletNativeOut.length > 0 || walletWsolOut.length > 0;
+    const walletReceivedSol = walletNativeIn.length > 0 || walletWsolIn.length > 0;
+
     // PRIORITY 2: Detect token swaps (BUY/SELL)
-    if (heliusTx.type === 'SWAP' || this.hasSwapInstructions(heliusTx)) {
-      const tokenTransfer = tokenTransfers.find(t => t.tokenStandard === 'Fungible');
-      if (!tokenTransfer) return { type: 'UNKNOWN', skip: true };
+    // A swap is when:
+    // - Helius marks it as SWAP, OR
+    // - Has swap instructions, OR
+    // - Token flows one way and SOL flows the opposite way for this wallet
+    const isSwap = heliusTx.type === 'SWAP' ||
+                   this.hasSwapInstructions(heliusTx) ||
+                   (isReceiving && walletSpentSol) ||   // Receiving token, spending SOL = BUY
+                   (isSending && walletReceivedSol);    // Sending token, receiving SOL = SELL
 
-      // Determine if buying or selling based on token flow direction
-      const isBuying = tokenTransfer.toUserAccount === walletAddress;
-
+    if (isSwap) {
       return {
-        type: isBuying ? 'BUY' : 'SELL',
-        tokenMint: tokenTransfer.mint,
-        tokenSymbol: tokenTransfer.tokenSymbol,
+        type: isReceiving ? 'BUY' : 'SELL',
+        tokenMint: walletTokenTransfer.mint,
+        tokenSymbol: walletTokenTransfer.tokenSymbol,
         skip: false
       };
     }
 
-    // PRIORITY 3: Token transfers (only if token is involved)
-    if (tokenTransfers.length > 0) {
-      const tokenTransfer = tokenTransfers[0];
-      const isOutgoing = tokenTransfer.fromUserAccount === walletAddress;
-
-      return {
-        type: isOutgoing ? 'TRANSFER_OUT' : 'TRANSFER_IN',
-        tokenMint: tokenTransfer.mint,
-        tokenSymbol: tokenTransfer.tokenSymbol,
-        skip: false
-      };
-    }
-
-    return { type: 'UNKNOWN', skip: true };
+    // PRIORITY 3: Token transfers (only if token is involved, no SOL movement for wallet)
+    return {
+      type: isSending ? 'TRANSFER_OUT' : 'TRANSFER_IN',
+      tokenMint: walletTokenTransfer.mint,
+      tokenSymbol: walletTokenTransfer.tokenSymbol,
+      skip: false
+    };
   }
 
   /**
@@ -291,40 +325,73 @@ class HeliusService {
 
   /**
    * Parse swap transaction details (BUY/SELL)
+   * CRITICAL: Avoid double-counting SOL when both native and WSOL transfers exist
+   * DEX flow: Native SOL → wrap to WSOL → DEX (or reverse for sells)
+   * We should count ONE OR THE OTHER, not both!
    */
   static parseSwapDetails(heliusTx, normalized, walletAddress) {
     const nativeTransfers = heliusTx.nativeTransfers || [];
     const tokenTransfers = heliusTx.tokenTransfers || [];
 
-    // Find SOL amount (sum of all SOL transfers)
-    let solIn = 0;
-    let solOut = 0;
+    // Calculate native SOL in/out
+    let nativeSolIn = 0;  // Native SOL leaving wallet
+    let nativeSolOut = 0; // Native SOL entering wallet
 
     for (const transfer of nativeTransfers) {
       if (transfer.fromUserAccount === walletAddress) {
-        solIn += transfer.amount / 1e9; // Convert lamports to SOL
+        nativeSolIn += transfer.amount / 1e9;
       }
       if (transfer.toUserAccount === walletAddress) {
-        solOut += transfer.amount / 1e9;
+        nativeSolOut += transfer.amount / 1e9;
       }
     }
 
-    // Find token amount
+    // Calculate WSOL in/out
+    let wsolIn = 0;  // WSOL leaving wallet
+    let wsolOut = 0; // WSOL entering wallet
+
+    const wsolTransfers = tokenTransfers.filter(t => t.mint === SOL_MINT);
+    for (const transfer of wsolTransfers) {
+      if (transfer.fromUserAccount === walletAddress) {
+        wsolIn += transfer.tokenAmount;
+      }
+      if (transfer.toUserAccount === walletAddress) {
+        wsolOut += transfer.tokenAmount;
+      }
+    }
+
+    // CRITICAL: Use WSOL if present (it's the canonical DEX transfer),
+    // otherwise fall back to native SOL. Never add both!
+    // This prevents double-counting when SOL is wrapped/unwrapped as part of the swap.
+    let solIn, solOut;
+
+    if (wsolIn > 0 || wsolOut > 0) {
+      // WSOL transfers exist - use those (they represent the actual DEX swap)
+      solIn = wsolIn;
+      solOut = wsolOut;
+    } else {
+      // No WSOL, use native SOL transfers
+      solIn = nativeSolIn;
+      solOut = nativeSolOut;
+    }
+
+    // Find the token transfer that involves THIS wallet (not just any transfer of the token)
     const tokenTransfer = tokenTransfers.find(t =>
-      t.mint === normalized.tokenMint && t.tokenStandard === 'Fungible'
+      t.mint === normalized.tokenMint &&
+      t.tokenStandard === 'Fungible' &&
+      t.mint !== SOL_MINT &&
+      (t.toUserAccount === walletAddress || t.fromUserAccount === walletAddress)
     );
 
     if (tokenTransfer) {
-      // Convert based on token decimals
-      const decimals = tokenTransfer.decimals || 9;
-      normalized.tokenAmount = tokenTransfer.tokenAmount / Math.pow(10, decimals);
+      normalized.tokenAmount = tokenTransfer.tokenAmount;
     }
 
     // Set SOL amount based on buy/sell
     if (normalized.type === 'BUY') {
-      normalized.solAmount = solIn; // SOL spent
+      normalized.solAmount = solIn;
     } else {
-      normalized.solAmount = solOut; // SOL received
+      normalized.solAmount = solOut;
     }
   }
 
@@ -333,11 +400,15 @@ class HeliusService {
    */
   static parseTransferDetails(heliusTx, normalized, walletAddress) {
     const tokenTransfers = heliusTx.tokenTransfers || [];
-    const tokenTransfer = tokenTransfers.find(t => t.mint === normalized.tokenMint);
+    // Find the transfer that involves THIS wallet
+    const tokenTransfer = tokenTransfers.find(t =>
+      t.mint === normalized.tokenMint &&
+      (t.toUserAccount === walletAddress || t.fromUserAccount === walletAddress)
+    );
 
     if (tokenTransfer) {
-      const decimals = tokenTransfer.decimals || 9;
-      normalized.tokenAmount = tokenTransfer.tokenAmount / Math.pow(10, decimals);
+      // Helius Enhanced API returns tokenAmount already in human-readable format
+      normalized.tokenAmount = tokenTransfer.tokenAmount;
       normalized.isEstimated = normalized.type === 'TRANSFER_OUT'; // Mark transfers out as estimated
     }
   }

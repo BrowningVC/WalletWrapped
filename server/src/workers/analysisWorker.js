@@ -181,6 +181,9 @@ analysisQueue.process('analyzeWallet', async (job) => {
 
     await emitProgress(walletAddress, 100, 'Analysis complete!');
 
+    // Update database status to completed
+    await DatabaseQueries.updateAnalysisProgress(walletAddress, 'completed', 100, 'Analysis complete!');
+
     // Calculate final duration
     const duration = Date.now() - startTime;
 

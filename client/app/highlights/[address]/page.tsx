@@ -4,6 +4,28 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
+interface HighlightMetadata {
+  tokenSymbol?: string;
+  tokenMint?: string;
+  tradesCount?: number;
+  profitPercent?: number;
+  lossPercent?: number;
+  holdingDays?: number;
+  month?: string;
+  monthPNL?: number;
+}
+
+interface ServerHighlight {
+  type: string;
+  title: string;
+  description: string;
+  valuePrimary: number;
+  valueSecondary: number;
+  metadata: HighlightMetadata;
+  rank: number;
+  imageUrl?: string;
+}
+
 interface Highlight {
   id: string;
   type: string;
@@ -14,6 +36,7 @@ interface Highlight {
   emoji: string;
   colorScheme: string;
   rank: number;
+  tokenTicker?: string;
 }
 
 interface WalletSummary {
@@ -30,6 +53,93 @@ interface WalletSummary {
 interface AnalysisData {
   summary: WalletSummary;
   highlights: Highlight[];
+}
+
+// Map server highlight types to display properties
+const highlightConfig: Record<string, { emoji: string; colorScheme: string }> = {
+  biggest_realized_win: { emoji: '🚀', colorScheme: 'profit' },
+  biggest_realized_loss: { emoji: '📉', colorScheme: 'loss' },
+  best_unrealized_gain: { emoji: '💎', colorScheme: 'profit' },
+  worst_unrealized_loss: { emoji: '😰', colorScheme: 'loss' },
+  best_single_trade: { emoji: '🎯', colorScheme: 'profit' },
+  most_traded_token: { emoji: '🔄', colorScheme: 'neutral' },
+  diamond_hands: { emoji: '💎🙌', colorScheme: 'neutral' },
+  paper_hands: { emoji: '📃🙌', colorScheme: 'neutral' },
+  total_realized_pnl: { emoji: '💰', colorScheme: 'default' },
+  total_unrealized_pnl: { emoji: '📊', colorScheme: 'default' },
+  win_rate: { emoji: '🏆', colorScheme: 'neutral' },
+  best_month: { emoji: '📅', colorScheme: 'profit' },
+};
+
+function transformHighlight(serverHighlight: ServerHighlight): Highlight {
+  const config = highlightConfig[serverHighlight.type] || { emoji: '✨', colorScheme: 'default' };
+
+  // Determine color scheme based on value if type is pnl-related
+  let colorScheme = config.colorScheme;
+  if (colorScheme === 'default') {
+    if (serverHighlight.type.includes('pnl')) {
+      colorScheme = serverHighlight.valuePrimary >= 0 ? 'profit' : 'loss';
+    }
+  }
+
+  // Get token ticker from metadata
+  const tokenTicker = serverHighlight.metadata?.tokenSymbol || undefined;
+
+  // Format the primary value
+  let value = '';
+  if (serverHighlight.type === 'win_rate') {
+    value = `${serverHighlight.valuePrimary}%`;
+  } else if (serverHighlight.type === 'most_traded_token') {
+    value = `$${tokenTicker || 'UNKNOWN'}`;
+  } else if (serverHighlight.type === 'diamond_hands' || serverHighlight.type === 'paper_hands') {
+    value = `$${tokenTicker || 'UNKNOWN'}`;
+  } else if (serverHighlight.type === 'best_month') {
+    const sign = serverHighlight.valuePrimary >= 0 ? '+' : '';
+    value = `${sign}${serverHighlight.valuePrimary.toFixed(2)} SOL`;
+  } else {
+    // For token-specific highlights (wins, losses, gains), include ticker
+    const sign = serverHighlight.valuePrimary >= 0 ? '+' : '';
+    const solValue = `${sign}${serverHighlight.valuePrimary.toFixed(2)} SOL`;
+    value = tokenTicker ? `${solValue} ($${tokenTicker})` : solValue;
+  }
+
+  // Format subtitle (USD value or additional context)
+  let subtitle = '';
+  if (serverHighlight.type === 'most_traded_token') {
+    subtitle = `${serverHighlight.valuePrimary} trades`;
+  } else if (serverHighlight.type === 'diamond_hands') {
+    subtitle = `${serverHighlight.valuePrimary} days held`;
+  } else if (serverHighlight.type === 'paper_hands') {
+    subtitle = `Sold after ${serverHighlight.valuePrimary} minutes`;
+  } else if (serverHighlight.valueSecondary && serverHighlight.type !== 'win_rate') {
+    const sign = serverHighlight.valueSecondary >= 0 ? '+' : '';
+    subtitle = `${sign}$${Math.abs(serverHighlight.valueSecondary).toLocaleString(undefined, { maximumFractionDigits: 2 })} USD`;
+  } else if (serverHighlight.metadata?.tradesCount) {
+    subtitle = `${serverHighlight.metadata.tradesCount} trades`;
+  }
+
+  // Build context from metadata
+  let context = serverHighlight.description;
+  if (serverHighlight.metadata?.profitPercent) {
+    context = `${serverHighlight.metadata.profitPercent}% return`;
+  } else if (serverHighlight.metadata?.lossPercent) {
+    context = `${serverHighlight.metadata.lossPercent}% loss`;
+  } else if (serverHighlight.metadata?.holdingDays) {
+    context = `Held for ${serverHighlight.metadata.holdingDays} days`;
+  }
+
+  return {
+    id: `${serverHighlight.type}-${serverHighlight.rank}`,
+    type: serverHighlight.type,
+    title: serverHighlight.title.replace(/\s*[🚀📉💎😰🎯🔄📃🙌💰📊🏆📅✨]+\s*/g, '').trim(), // Remove emoji from title, we add our own
+    value,
+    subtitle,
+    context,
+    emoji: config.emoji,
+    colorScheme,
+    rank: serverHighlight.rank,
+    tokenTicker,
+  };
 }
 
 export default function HighlightsPage() {
@@ -50,14 +160,38 @@ export default function HighlightsPage() {
   const fetchHighlights = async () => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      const response = await fetch(`${apiUrl}/api/highlights/${address}`);
 
-      if (!response.ok) {
-        throw new Error('Failed to fetch highlights');
+      // Fetch both summary and highlights in parallel
+      const [summaryRes, highlightsRes] = await Promise.all([
+        fetch(`${apiUrl}/api/wallet/${address}/summary`),
+        fetch(`${apiUrl}/api/wallet/${address}/highlights`)
+      ]);
+
+      if (!summaryRes.ok || !highlightsRes.ok) {
+        throw new Error('Failed to fetch wallet data');
       }
 
-      const result = await response.json();
-      setData(result);
+      const [summaryData, highlightsData] = await Promise.all([
+        summaryRes.json(),
+        highlightsRes.json()
+      ]);
+
+      // Transform server highlights to frontend format
+      const transformedHighlights = (highlightsData as ServerHighlight[]).map(transformHighlight);
+
+      setData({
+        summary: {
+          walletAddress: address,
+          totalRealizedPNL: summaryData.totalRealizedPNL || 0,
+          totalUnrealizedPNL: summaryData.totalUnrealizedPNL || 0,
+          totalPNL: summaryData.totalPNL || 0,
+          transactionCount: summaryData.transactionCount || 0,
+          activePositions: summaryData.activePositions || 0,
+          closedPositions: summaryData.closedPositions || 0,
+          winRate: summaryData.winRate || 0,
+        },
+        highlights: transformedHighlights,
+      });
     } catch (err: any) {
       console.error('Failed to fetch highlights:', err);
       setError(err.message || 'Failed to load highlights');
@@ -185,7 +319,7 @@ export default function HighlightsPage() {
           </div>
           <div className="card text-center">
             <div className="text-2xl font-bold text-primary-500">
-              {(data.summary.winRate * 100).toFixed(0)}%
+              {data.summary.winRate.toFixed(0)}%
             </div>
             <div className="text-sm text-gray-400">Win Rate</div>
           </div>
@@ -198,6 +332,9 @@ export default function HighlightsPage() {
           >
             <div className="text-6xl mb-4">{highlight.emoji}</div>
             <h2 className="text-2xl font-bold mb-2">{highlight.title}</h2>
+            {highlight.tokenTicker && !highlight.value.includes(highlight.tokenTicker) && (
+              <div className="text-xl font-semibold opacity-90 mb-1">${highlight.tokenTicker}</div>
+            )}
             <div className="text-4xl font-bold mb-2">{highlight.value}</div>
             <p className="text-lg opacity-90 mb-2">{highlight.subtitle}</p>
             <p className="text-sm opacity-75">{highlight.context}</p>
@@ -252,9 +389,12 @@ export default function HighlightsPage() {
             >
               <div className="flex items-start gap-3">
                 <div className="text-3xl">{h.emoji}</div>
-                <div>
+                <div className="min-w-0 flex-1">
                   <div className="font-bold">{h.title}</div>
-                  <div className="text-sm text-gray-400">{h.value}</div>
+                  {h.tokenTicker && !h.value.includes(h.tokenTicker) && (
+                    <div className="text-sm text-primary-400">${h.tokenTicker}</div>
+                  )}
+                  <div className="text-sm text-gray-400 truncate">{h.value}</div>
                 </div>
               </div>
             </button>
