@@ -42,23 +42,26 @@ class HighlightsGenerator {
   }
 
   /**
-   * 1. Overall PNL this year - Total realized P&L with USD and SOL
+   * 1. Overall PNL this year - Total P&L (realized + unrealized) with USD and SOL
    */
   static async overallPNL(summary, solPriceUSD) {
-    const pnlSol = summary.totalRealizedPNL;
+    const pnlSol = summary.totalPNL; // Realized + Unrealized
     const pnlUsd = pnlSol * solPriceUSD;
 
     return {
       type: 'overall_pnl',
-      title: pnlSol >= 0 ? 'Overall P&L' : 'Overall P&L',
-      description: `Your total realized profit/loss this year`,
+      title: 'Overall P&L',
+      description: `Your total profit/loss (realized + unrealized)`,
       valuePrimary: this.formatUsd(pnlUsd),
       valueSecondary: `(${this.formatSol(pnlSol)} SOL)`,
       metadata: {
         pnlSol: this.roundSol(pnlSol),
         pnlUsd: this.roundUsd(pnlUsd),
+        realizedPnlSol: this.roundSol(summary.totalRealizedPNL),
+        unrealizedPnlSol: this.roundSol(summary.totalUnrealizedPNL),
         isProfit: pnlSol >= 0,
-        closedPositions: summary.closedPositions
+        closedPositions: summary.closedPositions,
+        activePositions: summary.activePositions
       }
     };
   }
