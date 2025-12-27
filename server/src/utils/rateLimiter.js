@@ -130,6 +130,13 @@ class RateLimiter {
   }
 
   /**
+   * Alias for releaseAnalysisLock (used by routes)
+   */
+  static async releaseDuplicateLock(walletAddress) {
+    await this.releaseAnalysisLock(walletAddress);
+  }
+
+  /**
    * Check if wallet is currently being analyzed
    */
   static async isAnalyzing(walletAddress) {

@@ -8,8 +8,25 @@ const DatabaseQueries = require('../database/queries');
  * v1 - Initial 12 highlights
  * v2 - Reduced to 6 key highlights with pre-formatted values
  * v3 - Added fallbacks for all highlights, changed Overall P&L to total (realized+unrealized)
+ * v4 - Excluded stablecoins from biggest win/loss calculations
  */
-const HIGHLIGHTS_VERSION = 3;
+const HIGHLIGHTS_VERSION = 4;
+
+// Stablecoins and wrapped tokens to exclude from win/loss calculations
+// These are used for swapping, not trading
+const EXCLUDED_TOKENS = new Set([
+  // USDC variants
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC (native)
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+  // Wrapped SOL
+  'So11111111111111111111111111111111111111112',   // Wrapped SOL
+]);
+
+// Also exclude by symbol as a fallback
+const EXCLUDED_SYMBOLS = new Set([
+  'USDC', 'USDT', 'BUSD', 'DAI', 'USDH', 'UXD', 'USDR', 'PAI',
+  'WSOL', 'wSOL'
+]);
 
 class HighlightsGenerator {
   /**
@@ -82,11 +99,20 @@ class HighlightsGenerator {
   }
 
   /**
-   * 2. Biggest Win - Token with highest realized P&L
+   * Helper: Check if a token should be excluded from win/loss calculations
+   */
+  static isExcludedToken(position) {
+    if (EXCLUDED_TOKENS.has(position.tokenMint)) return true;
+    if (EXCLUDED_SYMBOLS.has(position.tokenSymbol?.toUpperCase())) return true;
+    return false;
+  }
+
+  /**
+   * 2. Biggest Win - Token with highest realized P&L (excluding stablecoins)
    */
   static async biggestWin(positions, solPriceUSD) {
     const winner = Object.values(positions)
-      .filter(p => p.realizedPNL > 0)
+      .filter(p => p.realizedPNL > 0 && !this.isExcludedToken(p))
       .sort((a, b) => b.realizedPNL - a.realizedPNL)[0];
 
     // Fallback if no winning trades
@@ -126,11 +152,11 @@ class HighlightsGenerator {
   }
 
   /**
-   * 3. Biggest Loss - Token with most negative realized P&L
+   * 3. Biggest Loss - Token with most negative realized P&L (excluding stablecoins)
    */
   static async biggestLoss(positions, solPriceUSD) {
     const loser = Object.values(positions)
-      .filter(p => p.realizedPNL < 0)
+      .filter(p => p.realizedPNL < 0 && !this.isExcludedToken(p))
       .sort((a, b) => a.realizedPNL - b.realizedPNL)[0];
 
     // Fallback if no losing trades
@@ -207,7 +233,7 @@ class HighlightsGenerator {
   }
 
   /**
-   * 5. Longest Hold - Token held longest before any sell
+   * 5. Longest Hold - Token held longest before any sell (excluding stablecoins)
    */
   static async longestHold(positions, transactions) {
     let longestHold = null;
@@ -215,6 +241,7 @@ class HighlightsGenerator {
 
     for (const position of Object.values(positions)) {
       if (!position.trades || position.trades.length < 2) continue;
+      if (this.isExcludedToken(position)) continue; // Skip stablecoins
 
       // Sort trades by time
       const trades = position.trades.sort((a, b) =>
@@ -278,7 +305,7 @@ class HighlightsGenerator {
   }
 
   /**
-   * 6. Best Profit Day - Most profit made in a single day
+   * 6. Best Profit Day - Most profit made in a single day (excluding stablecoins)
    */
   static async bestProfitDay(positions, transactions, solPriceUSD) {
     // Group sells by day and calculate daily profit using FIFO-calculated realizedPnl
@@ -286,6 +313,7 @@ class HighlightsGenerator {
 
     for (const position of Object.values(positions)) {
       if (!position.trades) continue;
+      if (this.isExcludedToken(position)) continue; // Skip stablecoins
 
       for (const trade of position.trades) {
         // Only count sells that have realized P&L calculated

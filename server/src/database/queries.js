@@ -268,6 +268,51 @@ class DatabaseQueries {
   }
 
   /**
+   * Get all transactions for a wallet, optionally filtered by token mint
+   */
+  static async getTransactions(walletAddress, tokenMint = null) {
+    let queryText = `SELECT * FROM transactions WHERE wallet_address = $1`;
+    const params = [walletAddress];
+
+    if (tokenMint) {
+      queryText += ` AND token_mint = $2`;
+      params.push(tokenMint);
+    }
+
+    queryText += ` ORDER BY block_time ASC`;
+
+    const result = await query(queryText, params);
+    return result.rows;
+  }
+
+  /**
+   * Get transactions grouped by token mint for highlight calculations
+   */
+  static async getTransactionsGroupedByToken(walletAddress) {
+    const result = await query(
+      `SELECT token_mint, json_agg(
+        json_build_object(
+          'signature', signature,
+          'blockTime', block_time,
+          'type', transaction_type,
+          'tokenMint', token_mint,
+          'tokenSymbol', token_symbol,
+          'solAmount', sol_amount,
+          'tokenAmount', token_amount,
+          'priceSol', price_sol,
+          'feeSol', fee_sol,
+          'isEstimated', is_estimated
+        ) ORDER BY block_time ASC
+      ) as trades
+      FROM transactions
+      WHERE wallet_address = $1 AND token_mint IS NOT NULL
+      GROUP BY token_mint`,
+      [walletAddress]
+    );
+    return result.rows;
+  }
+
+  /**
    * ============================================================================
    * DAILY P&L - BATCH UPSERT
    * ============================================================================
@@ -374,6 +419,36 @@ class DatabaseQueries {
   }
 
   /**
+   * Delete all highlights for a wallet (used for refresh)
+   */
+  static async deleteHighlights(walletAddress) {
+    const result = await query(
+      `DELETE FROM highlights WHERE wallet_address = $1`,
+      [walletAddress]
+    );
+    console.log(`Deleted ${result.rowCount} highlights for ${walletAddress}`);
+    return result.rowCount;
+  }
+
+  /**
+   * Reset analysis status to force re-processing on refresh
+   * Sets completed_at to null so the analyzer doesn't skip it
+   */
+  static async resetAnalysisForRefresh(walletAddress) {
+    const result = await query(
+      `UPDATE wallet_analyses
+       SET completed_at = NULL,
+           analysis_status = 'pending',
+           progress_percent = 0,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE wallet_address = $1`,
+      [walletAddress]
+    );
+    console.log(`Reset analysis for refresh: ${walletAddress}`);
+    return result.rowCount;
+  }
+
+  /**
    * ============================================================================
    * CLEANUP & MAINTENANCE
    * ============================================================================
@@ -387,6 +462,26 @@ class DatabaseQueries {
        RETURNING wallet_address`
     );
     console.log(`Cleaned up ${result.rowCount} expired analyses`);
+    return result.rowCount;
+  }
+
+  /**
+   * Mark stale processing analyses as failed
+   * Any analysis stuck in 'processing' for more than 10 minutes is considered failed
+   */
+  static async cleanupStaleProcessing() {
+    const result = await query(
+      `UPDATE wallet_analyses
+       SET analysis_status = 'failed',
+           error_message = 'Analysis timed out',
+           updated_at = CURRENT_TIMESTAMP
+       WHERE analysis_status = 'processing'
+       AND updated_at < CURRENT_TIMESTAMP - INTERVAL '10 minutes'
+       RETURNING wallet_address`
+    );
+    if (result.rowCount > 0) {
+      console.log(`Marked ${result.rowCount} stale analyses as failed:`, result.rows.map(r => r.wallet_address));
+    }
     return result.rowCount;
   }
 

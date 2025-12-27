@@ -1,10 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const { PublicKey } = require('@solana/web3.js');
-const { queueAnalysis, getAnalysisJob, cancelAnalysis } = require('../workers/queue');
 const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
 const RateLimiter = require('../utils/rateLimiter');
+const AnalysisOrchestrator = require('../services/analysisOrchestrator');
 
 /**
  * Validate Solana wallet address
@@ -115,17 +115,17 @@ router.post('/analyze', async (req, res) => {
       });
     }
 
-    // Queue new analysis job
-    const job = await queueAnalysis(trimmedAddress, {
-      priority: 'normal',
-      incremental: existing && existing.analysis_status === 'completed' // Use incremental if re-analyzing
-    });
+    // Start analysis directly (no queue) - runs concurrently with other analyses
+    const isIncremental = existing && existing.analysis_status === 'completed';
+
+    // Fire and forget - analysis runs in background, client polls for status
+    AnalysisOrchestrator.runAnalysis(trimmedAddress, isIncremental)
+      .catch(err => console.error(`Analysis failed for ${trimmedAddress}:`, err));
 
     res.json({
-      status: 'queued',
+      status: 'processing',
       progress: 0,
-      message: 'Analysis queued',
-      jobId: job.id,
+      message: 'Analysis started',
       walletAddress: trimmedAddress
     });
 
@@ -214,8 +214,8 @@ router.delete('/analyze/:address', async (req, res) => {
       });
     }
 
-    // Cancel job in queue
-    const cancelled = await cancelAnalysis(address);
+    // Cancel running analysis
+    const cancelled = AnalysisOrchestrator.cancelAnalysis(address);
 
     if (!cancelled) {
       return res.status(400).json({
@@ -226,6 +226,9 @@ router.delete('/analyze/:address', async (req, res) => {
 
     // Update database
     await DatabaseQueries.updateAnalysisProgress(address, 'cancelled', 0);
+
+    // Release the lock
+    await RateLimiter.releaseDuplicateLock(address);
 
     res.json({
       success: true,

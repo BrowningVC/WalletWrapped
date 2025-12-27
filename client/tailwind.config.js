@@ -44,9 +44,20 @@ module.exports = {
           700: '#b91c1c',
         },
         dark: {
-          900: '#0f172a', // Background
-          800: '#1e293b', // Surface
-          700: '#334155',
+          950: '#050508', // Deepest background
+          900: '#0a0a12', // Background
+          800: '#12121e', // Surface
+          700: '#1a1a2a', // Elevated surface
+          600: '#252538', // Borders
+          500: '#333346', // Muted elements
+        },
+        festive: {
+          gold: '#ffd700',
+          pink: '#ff6b9d',
+          purple: '#9d4edd',
+          blue: '#4cc9f0',
+          cyan: '#00f5d4',
+          magenta: '#f72585',
         },
       },
       fontFamily: {
@@ -58,6 +69,10 @@ module.exports = {
         'gradient-crypto': 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
         'gradient-profit': 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
         'gradient-loss': 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+        'gradient-nye': 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+        'gradient-nye-gold': 'linear-gradient(135deg, #ffd700 0%, #ff8c00 50%, #ff6347 100%)',
+        'gradient-nye-party': 'linear-gradient(135deg, #f72585 0%, #7209b7 50%, #3a0ca3 100%)',
+        'gradient-shimmer': 'linear-gradient(90deg, transparent 0%, rgba(255,215,0,0.3) 50%, transparent 100%)',
       },
       animation: {
         'pulse-glow': 'pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
@@ -65,6 +80,10 @@ module.exports = {
         'slide-down': 'slide-down 0.5s ease-out',
         'fade-in': 'fade-in 0.3s ease-out',
         'spin-slow': 'spin 3s linear infinite',
+        'sparkle': 'sparkle 1.5s ease-in-out infinite',
+        'confetti': 'confetti 3s ease-out infinite',
+        'float': 'float 3s ease-in-out infinite',
+        'shimmer': 'shimmer 2s linear infinite',
       },
       keyframes: {
         'pulse-glow': {
@@ -100,6 +119,22 @@ module.exports = {
         'fade-in': {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        'sparkle': {
+          '0%, 100%': { opacity: '0', transform: 'scale(0)' },
+          '50%': { opacity: '1', transform: 'scale(1)' },
+        },
+        'confetti': {
+          '0%': { transform: 'translateY(0) rotate(0deg)', opacity: '1' },
+          '100%': { transform: 'translateY(100px) rotate(720deg)', opacity: '0' },
+        },
+        'float': {
+          '0%, 100%': { transform: 'translateY(0)' },
+          '50%': { transform: 'translateY(-10px)' },
+        },
+        'shimmer': {
+          '0%': { backgroundPosition: '-200% 0' },
+          '100%': { backgroundPosition: '200% 0' },
         },
       },
       boxShadow: {

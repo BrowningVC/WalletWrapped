@@ -1,14 +1,15 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
-// Optimized connection pool configuration
+// Optimized connection pool configuration for 50+ concurrent analyses
+// Each analysis uses ~2-4 connections, so 100 max supports 25-50 concurrent
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 20,                      // Maximum connections
-  min: 5,                       // Minimum idle connections
+  max: 100,                     // Maximum connections (increased for concurrency)
+  min: 10,                      // Minimum idle connections
   idleTimeoutMillis: 30000,     // Close idle connections after 30s
-  connectionTimeoutMillis: 5000, // Fail fast if can't connect
-  statement_timeout: 10000,     // 10s max per query
+  connectionTimeoutMillis: 10000, // 10s to acquire connection
+  statement_timeout: 60000,     // 60s max per query (large batch inserts need time)
   application_name: 'walletwrapped'
 });
 
@@ -63,24 +64,35 @@ async function transaction(callback) {
 }
 
 // Batch insert helper (for performance)
+// Processes batches in parallel for speed
 async function batchInsert(table, columns, values, batchSize = 500) {
   const batches = [];
   for (let i = 0; i < values.length; i += batchSize) {
     batches.push(values.slice(i, i + batchSize));
   }
 
+  // Process batches in parallel (pool handles connection management)
+  const PARALLEL_BATCHES = 5; // Insert 5 batches concurrently
   const results = [];
-  for (const batch of batches) {
-    const placeholders = batch.map((_, i) => {
-      const offset = i * columns.length;
-      return `(${columns.map((_, j) => `$${offset + j + 1}`).join(', ')})`;
-    }).join(', ');
 
-    const query = `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${placeholders}`;
-    const flatValues = batch.flat();
+  for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
+    const batchGroup = batches.slice(i, i + PARALLEL_BATCHES);
 
-    const res = await pool.query(query, flatValues);
-    results.push(res);
+    const groupResults = await Promise.all(
+      batchGroup.map(batch => {
+        const placeholders = batch.map((_, idx) => {
+          const offset = idx * columns.length;
+          return `(${columns.map((_, j) => `$${offset + j + 1}`).join(', ')})`;
+        }).join(', ');
+
+        const queryText = `INSERT INTO ${table} (${columns.join(', ')}) VALUES ${placeholders}`;
+        const flatValues = batch.flat();
+
+        return pool.query(queryText, flatValues);
+      })
+    );
+
+    results.push(...groupResults);
   }
 
   return results;

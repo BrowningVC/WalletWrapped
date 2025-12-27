@@ -11,7 +11,7 @@ class WalletAnalyzer {
   /**
    * Analyze wallet with streaming processing for memory efficiency
    * @param {string} walletAddress - Solana wallet address
-   * @param {function} progressCallback - Progress updates: (percent, message)
+   * @param {function} progressCallback - Progress updates: (percent, message, details?)
    */
   static async analyzeWallet(walletAddress, progressCallback = () => {}) {
     console.log(`Starting analysis for wallet: ${walletAddress}`);
@@ -19,13 +19,29 @@ class WalletAnalyzer {
 
     try {
       // Step 1: Fetch all transactions (0-40%)
-      progressCallback(5, 'Fetching transaction history...');
+      // Phase 1 (0-13%): Count signatures to get accurate total
+      // Phase 2 (13-40%): Fetch enhanced transaction data
+      progressCallback(5, 'Fetching transaction history...', { fetched: 0, total: null });
 
       const rawTransactions = await HeliusService.fetchAllTransactions(
         walletAddress,
-        (fetched, estimated) => {
-          const progress = 5 + (fetched / Math.max(estimated, 1)) * 35;
-          progressCallback(Math.min(progress, 40), `Fetched ${fetched} transactions...`);
+        (fetched, total, phase) => {
+          if (phase === 'counting') {
+            // During signature collection, show counting progress (5-13%)
+            progressCallback(
+              Math.min(5 + (total / 10000) * 8, 13), // Cap at 13%, scale based on count
+              `Counting transactions: ${total.toLocaleString()} found...`,
+              { fetched: 0, total: total }
+            );
+          } else {
+            // During enhanced data fetch, show fetch progress (13-40%)
+            const progress = 13 + (fetched / Math.max(total, 1)) * 27;
+            progressCallback(
+              Math.min(progress, 40),
+              `Fetching transactions: ${fetched.toLocaleString()} of ${total.toLocaleString()}...`,
+              { fetched, total }
+            );
+          }
         }
       );
 
@@ -33,7 +49,8 @@ class WalletAnalyzer {
         throw new Error('No transactions found for this wallet');
       }
 
-      progressCallback(40, `Parsing ${rawTransactions.length} transactions...`);
+      const totalTx = rawTransactions.length;
+      progressCallback(40, `Parsing ${totalTx.toLocaleString()} transactions...`, { fetched: totalTx, total: totalTx, processed: 0 });
 
       // Step 2: Parse and normalize transactions (40-50%)
       const normalizedTransactions = await this.parseTransactionsStream(
@@ -41,19 +58,28 @@ class WalletAnalyzer {
         walletAddress,
         (processed, total) => {
           const progress = 40 + (processed / total) * 10;
-          progressCallback(progress, `Parsing transactions: ${processed}/${total}`);
+          progressCallback(
+            progress,
+            `Parsing transactions: ${processed.toLocaleString()} / ${total.toLocaleString()}`,
+            { fetched: total, total, processed }
+          );
         }
       );
 
-      progressCallback(50, 'Calculating profit & loss...');
+      progressCallback(50, 'Calculating profit & loss...', { fetched: totalTx, total: totalTx, processed: totalTx });
 
       // Step 3: Calculate P&L (50-70%)
       const { positions, dailyPNL, summary } = await PNLCalculator.calculate(
         normalizedTransactions,
-        walletAddress
+        walletAddress,
+        (pnlProgress, pnlMessage) => {
+          // Map P&L progress (0-1) to overall progress (50-70%)
+          const overallProgress = 50 + (pnlProgress * 20);
+          progressCallback(overallProgress, pnlMessage, { fetched: totalTx, total: totalTx, processed: Math.round(pnlProgress * totalTx) });
+        }
       );
 
-      progressCallback(70, 'Saving to database...');
+      progressCallback(70, 'Saving to database...', { fetched: totalTx, total: totalTx, processed: totalTx });
 
       // Step 4: Save to database in batches (70-85%)
       await this.saveToDatabase(walletAddress, {
@@ -63,10 +89,10 @@ class WalletAnalyzer {
         summary
       }, (progress) => {
         const saveProgress = 70 + progress * 15;
-        progressCallback(saveProgress, 'Saving results...');
+        progressCallback(saveProgress, 'Saving results...', { fetched: totalTx, total: totalTx, processed: totalTx });
       });
 
-      progressCallback(85, 'Analysis complete!');
+      progressCallback(85, 'Analysis complete!', { fetched: totalTx, total: totalTx, processed: totalTx });
 
       const duration = Date.now() - startTime;
       console.log(`Wallet analysis completed in ${duration}ms`);
@@ -75,6 +101,7 @@ class WalletAnalyzer {
         walletAddress,
         transactionCount: normalizedTransactions.length,
         positionCount: Object.keys(positions).length,
+        positions,  // Include positions with trades for highlight generation
         summary,
         duration
       };
@@ -86,29 +113,34 @@ class WalletAnalyzer {
   }
 
   /**
-   * Parse transactions in streaming fashion (memory efficient)
+   * Parse transactions with parallel batch processing for speed
+   * Processes transactions in parallel batches while maintaining order
    */
   static async parseTransactionsStream(rawTransactions, walletAddress, progressCallback = () => {}) {
     const normalized = [];
     const total = rawTransactions.length;
+    const BATCH_SIZE = 200; // Process 200 transactions in parallel (parsing is CPU-light)
 
-    for (let i = 0; i < total; i++) {
-      const parsed = await HeliusService.parseTransaction(rawTransactions[i], walletAddress);
+    for (let i = 0; i < total; i += BATCH_SIZE) {
+      const batch = rawTransactions.slice(i, i + BATCH_SIZE);
 
-      if (parsed) {
-        // Add wallet address to each transaction
-        parsed.walletAddress = walletAddress;
-        normalized.push(parsed);
+      // Process batch in parallel
+      const parsedBatch = await Promise.all(
+        batch.map(tx => HeliusService.parseTransaction(tx, walletAddress))
+      );
+
+      // Filter nulls and add wallet address
+      for (const parsed of parsedBatch) {
+        if (parsed) {
+          parsed.walletAddress = walletAddress;
+          normalized.push(parsed);
+        }
       }
 
-      // Report progress every 100 transactions
-      if (i % 100 === 0) {
-        progressCallback(i + 1, total);
-      }
+      // Report progress
+      const processed = Math.min(i + BATCH_SIZE, total);
+      progressCallback(processed, total);
     }
-
-    // Final progress update
-    progressCallback(total, total);
 
     return normalized;
   }
@@ -264,17 +296,24 @@ class WalletAnalyzer {
 
     progressCallback(100, 'Update complete!');
 
+    // Calculate summary
+    const summary = PNLCalculator.calculateSummary(positions);
+
     return {
       walletAddress,
       newTransactions: normalized.length,
+      positions,  // Include positions with trades for highlight generation
+      summary,
       updated: true
     };
   }
 
   /**
    * Convert database positions array to map by mint
+   * @param {Array} positionsArray - Positions from database
+   * @param {Object} tradesMap - Optional map of token_mint -> trades array from getTransactionsGroupedByToken
    */
-  static convertPositionsToMap(positionsArray) {
+  static convertPositionsToMap(positionsArray, tradesMap = {}) {
     const map = {};
     for (const pos of positionsArray) {
       map[pos.token_mint] = {
@@ -296,7 +335,7 @@ class WalletAnalyzer {
         lastTradeDate: pos.last_trade_date,
         isActive: pos.is_active,
         buyLots: pos.buy_lots || [],
-        trades: [],
+        trades: tradesMap[pos.token_mint] || [],
         metadata: {
           hasEstimatedTransfers: pos.has_estimated_transfers,
           transferCount: pos.transfer_count,
@@ -306,6 +345,25 @@ class WalletAnalyzer {
       };
     }
     return map;
+  }
+
+  /**
+   * Get positions with trades populated from database
+   * Used when we need full position data including trade history for highlights
+   */
+  static async getPositionsWithTrades(walletAddress) {
+    const [positions, tradesRows] = await Promise.all([
+      DatabaseQueries.getPositions(walletAddress),
+      DatabaseQueries.getTransactionsGroupedByToken(walletAddress)
+    ]);
+
+    // Convert trades rows to a map by token_mint
+    const tradesMap = {};
+    for (const row of tradesRows) {
+      tradesMap[row.token_mint] = row.trades;
+    }
+
+    return this.convertPositionsToMap(positions, tradesMap);
   }
 
   /**

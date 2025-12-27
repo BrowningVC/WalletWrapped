@@ -67,7 +67,7 @@ export default function WalletInput({ onAnalyze, isLoading = false }: WalletInpu
             setError('');
           }}
           placeholder="Paste Solana wallet address (e.g., 7Np...xyz)"
-          className={`input pr-32 ${error ? 'border-loss-500 focus:ring-loss-500' : ''}`}
+          className={`w-full px-4 py-4 bg-dark-900/80 border-2 border-festive-gold/40 rounded-xl text-gray-100 placeholder-gray-500 focus:outline-none focus:border-festive-gold focus:ring-4 focus:ring-festive-gold/20 transition-all pr-32 shadow-[0_0_20px_rgba(255,215,0,0.15)] hover:shadow-[0_0_25px_rgba(255,215,0,0.25)] hover:border-festive-gold/60 ${error ? 'border-loss-500 focus:ring-loss-500/20 shadow-[0_0_20px_rgba(239,68,68,0.2)]' : ''}`}
           disabled={isLoading}
           autoComplete="off"
           spellCheck={false}
@@ -116,7 +116,7 @@ export default function WalletInput({ onAnalyze, isLoading = false }: WalletInpu
       <button
         type="submit"
         disabled={isLoading || !address}
-        className="btn-primary w-full mt-4"
+        className="w-full mt-4 py-4 px-6 rounded-xl font-semibold text-dark-900 bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
       >
         {isLoading ? (
           <>
@@ -135,7 +135,7 @@ export default function WalletInput({ onAnalyze, isLoading = false }: WalletInpu
 
       {/* Example wallets */}
       <div className="mt-4 text-center">
-        <p className="text-sm text-gray-500 mb-2">Or try an example:</p>
+        <p className="text-sm text-gray-600 mb-2">Or try an example:</p>
         <div className="flex flex-wrap justify-center gap-2">
           {[
             '7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2',
@@ -145,7 +145,7 @@ export default function WalletInput({ onAnalyze, isLoading = false }: WalletInpu
               key={exampleAddr}
               type="button"
               onClick={() => setAddress(exampleAddr)}
-              className="text-xs px-3 py-1 bg-dark-800 hover:bg-dark-700 border border-gray-700 rounded-full transition-colors"
+              className="text-xs px-3 py-1.5 bg-dark-900 hover:bg-dark-800 border border-dark-600 hover:border-festive-gold/30 rounded-full transition-colors text-gray-400 hover:text-festive-gold"
               disabled={isLoading}
             >
               {exampleAddr.slice(0, 4)}...{exampleAddr.slice(-4)}

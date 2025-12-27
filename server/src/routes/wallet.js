@@ -5,6 +5,7 @@ const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
 const WalletAnalyzer = require('../services/analyzer');
 const HighlightsGenerator = require('../services/highlights');
+const AnalysisOrchestrator = require('../services/analysisOrchestrator');
 
 /**
  * Validate Solana wallet address
@@ -192,14 +193,13 @@ router.get('/wallet/:address/highlights', async (req, res) => {
     if (needsRefresh && highlights && highlights.length > 0) {
       console.log(`Highlights for ${address} are outdated (v${highlights[0]?.metadata?.highlightsVersion || '?'} vs v${currentVersion}), auto-refreshing...`);
 
-      // Queue a background refresh but return existing data for now
+      // Start a background refresh but return existing data for now
       // This prevents blocking the request while still updating for next time
       setImmediate(async () => {
         try {
-          const { queueAnalysis } = require('../workers/queue');
-          await queueAnalysis(address, { priority: 'low', highlightsOnly: true });
+          await AnalysisOrchestrator.runAnalysis(address, true);
         } catch (e) {
-          console.error('Failed to queue highlights refresh:', e.message);
+          console.error('Failed to run highlights refresh:', e.message);
         }
       });
     }
@@ -339,9 +339,17 @@ router.post('/wallet/:address/refresh', async (req, res) => {
     // Invalidate all caches for this wallet
     await CacheManager.invalidateWallet(address);
 
-    // Queue new analysis
-    const { queueAnalysis } = require('../workers/queue');
-    await queueAnalysis(address, { priority: 'high', incremental: true });
+    // Delete existing highlights so they get regenerated with latest version
+    await DatabaseQueries.deleteHighlights(address);
+
+    // Reset the analysis status to force re-processing
+    // We keep the transaction data but force highlight regeneration
+    await DatabaseQueries.resetAnalysisForRefresh(address);
+
+    // Start fresh analysis (not incremental since we want to regenerate everything)
+    AnalysisOrchestrator.runAnalysis(address, false).catch(err => {
+      console.error(`Refresh analysis failed for ${address}:`, err.message);
+    });
 
     res.json({
       success: true,

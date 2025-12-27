@@ -1,4 +1,6 @@
 require('dotenv').config();
+const cluster = require('cluster');
+const os = require('os');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -10,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 // Database initialization
 const { query } = require('./config/database');
 const redis = require('./config/redis');
+const DatabaseQueries = require('./database/queries');
 
 // Routes
 const analyzeRoutes = require('./routes/analyze');
@@ -18,9 +21,11 @@ const walletRoutes = require('./routes/wallet');
 // Socket.io handlers
 const { initializeSocketHandlers } = require('./socket/handlers');
 
-// Worker
-const { startWorker, setSocketIO } = require('./workers/analysisWorker');
-const { cleanOldJobs, getQueueStats } = require('./workers/queue');
+// Analysis Orchestrator (replaces old queue-based worker)
+const AnalysisOrchestrator = require('./services/analysisOrchestrator');
+
+// Number of CPU cores to use (leave 1 for system)
+const NUM_WORKERS = Math.max(1, os.cpus().length - 1);
 
 // Constants
 const PORT = process.env.PORT || 3002;
@@ -107,8 +112,9 @@ app.get('/health', async (req, res) => {
     // Check Redis
     await redis.ping();
 
-    // Get queue stats
-    const queueStats = await getQueueStats();
+    // Get active analyses count
+    const activeAnalyses = AnalysisOrchestrator.getActiveCount();
+    const activeWallets = AnalysisOrchestrator.getActiveWallets();
 
     res.json({
       status: 'healthy',
@@ -116,7 +122,14 @@ app.get('/health', async (req, res) => {
       services: {
         database: 'connected',
         redis: 'connected',
-        queue: queueStats
+        analyses: {
+          active: activeAnalyses,
+          wallets: activeWallets
+        }
+      },
+      cluster: {
+        workers: NUM_WORKERS,
+        pid: process.pid
       },
       version: process.env.npm_package_version || '1.0.0'
     });
@@ -147,6 +160,9 @@ app.get('/api', (req, res) => {
         'GET /api/wallet/:address/highlights': 'Get highlight cards',
         'GET /api/wallet/:address/calendar': 'Get daily P&L calendar',
         'POST /api/wallet/:address/refresh': 'Refresh analysis'
+      },
+      stats: {
+        'GET /api/stats': 'Get platform statistics (wallet count, etc.)'
       }
     },
     socketEvents: {
@@ -154,6 +170,45 @@ app.get('/api', (req, res) => {
       server: ['progress', 'complete', 'error', 'status', 'pong']
     }
   });
+});
+
+// Platform stats endpoint - returns wallet count for live counter
+app.get('/api/stats', async (req, res) => {
+  // Prevent caching so counter updates in real-time
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
+  try {
+    // Get count of all wallet analyses (completed, failed, or processing)
+    // This counts unique wallets that have ever been analyzed
+    const result = await query(`
+      SELECT
+        COUNT(DISTINCT wallet_address) as wallets_analyzed,
+        COUNT(*) as total_analyses
+      FROM wallet_analyses
+    `);
+
+    const stats = result.rows[0];
+
+    // Get active analyses count
+    const activeAnalyses = AnalysisOrchestrator.getActiveCount();
+
+    res.json({
+      walletsAnalyzed: parseInt(stats.wallets_analyzed) || 0,
+      totalAnalyses: parseInt(stats.total_analyses) || 0,
+      activeAnalyses: activeAnalyses,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Stats endpoint error:', error);
+    res.status(500).json({
+      error: 'Failed to fetch stats',
+      walletsAnalyzed: 0,
+      totalAnalyses: 0,
+      activeAnalyses: 0
+    });
+  }
 });
 
 // Mount API routes
@@ -191,42 +246,33 @@ app.use((err, req, res, next) => {
 async function initializeServices() {
   console.log('\n========================================');
   console.log('WalletWrapped Server Starting...');
+  console.log(`Worker PID: ${process.pid}`);
   console.log('========================================\n');
 
   try {
     // Test database connection
-    console.log('📊 Testing database connection...');
+    console.log('Testing database connection...');
     await query('SELECT NOW()');
-    console.log('✓ Database connected\n');
+    console.log('Database connected\n');
 
     // Test Redis connection
-    console.log('🔴 Testing Redis connection...');
+    console.log('Testing Redis connection...');
     await redis.ping();
-    console.log('✓ Redis connected\n');
+    console.log('Redis connected\n');
 
     // Initialize Socket.io
-    console.log('🔌 Initializing Socket.io...');
+    console.log('Initializing Socket.io...');
     initializeSocketHandlers(io);
-    setSocketIO(io); // Connect worker to Socket.io
-    console.log('✓ Socket.io initialized\n');
-
-    // Start worker
-    console.log('⚙️  Starting analysis worker...');
-    startWorker();
-    console.log('✓ Worker started\n');
-
-    // Schedule cleanup job (every 6 hours)
-    setInterval(async () => {
-      console.log('🧹 Cleaning old jobs...');
-      await cleanOldJobs();
-    }, 6 * 60 * 60 * 1000);
+    AnalysisOrchestrator.setSocketIO(io); // Connect orchestrator to Socket.io
+    console.log('Socket.io initialized\n');
 
     console.log('========================================');
-    console.log('✓ All services initialized successfully');
+    console.log('All services initialized successfully');
+    console.log('Ready for concurrent wallet analyses!');
     console.log('========================================\n');
 
   } catch (error) {
-    console.error('\n❌ Service initialization failed:', error);
+    console.error('\nService initialization failed:', error);
     process.exit(1);
   }
 }
@@ -247,6 +293,20 @@ async function startServer() {
     console.log(`   - API Info: http://localhost:${PORT}/api`);
     console.log(`   - Socket.io: ws://localhost:${PORT}`);
     console.log(`\n✨ Ready to analyze wallets!\n`);
+
+    // Run cleanup of stale processing analyses every 2 minutes
+    setInterval(async () => {
+      try {
+        await DatabaseQueries.cleanupStaleProcessing();
+      } catch (error) {
+        console.error('Cleanup stale processing error:', error.message);
+      }
+    }, 2 * 60 * 1000);
+
+    // Run initial cleanup on startup
+    DatabaseQueries.cleanupStaleProcessing().catch(err =>
+      console.error('Initial stale cleanup error:', err.message)
+    );
   });
 }
 
@@ -307,12 +367,39 @@ process.on('unhandledRejection', (reason, promise) => {
   gracefulShutdown('UNHANDLED_REJECTION');
 });
 
-// Start the server
+// Start the server with cluster mode for multi-core utilization
 if (require.main === module) {
-  startServer().catch((error) => {
-    console.error('Failed to start server:', error);
-    process.exit(1);
-  });
+  const USE_CLUSTER = process.env.USE_CLUSTER !== 'false' && NODE_ENV === 'production';
+
+  if (USE_CLUSTER && cluster.isPrimary) {
+    console.log(`\n========================================`);
+    console.log(`Primary process ${process.pid} starting`);
+    console.log(`Spawning ${NUM_WORKERS} worker processes...`);
+    console.log(`========================================\n`);
+
+    // Fork workers
+    for (let i = 0; i < NUM_WORKERS; i++) {
+      cluster.fork();
+    }
+
+    // Handle worker exit
+    cluster.on('exit', (worker, code, signal) => {
+      console.log(`Worker ${worker.process.pid} died (${signal || code}). Restarting...`);
+      cluster.fork();
+    });
+
+    // Log when workers come online
+    cluster.on('online', (worker) => {
+      console.log(`Worker ${worker.process.pid} is online`);
+    });
+
+  } else {
+    // Single process mode (development) or worker process (production)
+    startServer().catch((error) => {
+      console.error('Failed to start server:', error);
+      process.exit(1);
+    });
+  }
 }
 
 module.exports = { app, server, io };

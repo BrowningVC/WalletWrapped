@@ -13,9 +13,10 @@ class PNLCalculator {
    * Calculate P&L for all token positions
    * @param {Array} transactions - Array of normalized transactions
    * @param {string} walletAddress - Wallet address being analyzed
+   * @param {Function} progressCallback - Optional callback for progress updates (percent, message)
    * @returns {Object} { positions, dailyPNL, summary, netSolFlow }
    */
-  static async calculate(transactions, walletAddress) {
+  static async calculate(transactions, walletAddress, progressCallback = () => {}) {
     const positions = {};
     const dailyPNL = {};
     const seenSignatures = new Set();
@@ -32,14 +33,27 @@ class PNLCalculator {
       .filter(tx => tx && tx.signature)
       .sort((a, b) => new Date(a.blockTime) - new Date(b.blockTime));
 
-    console.log(`Calculating P&L for ${sortedTxs.length} transactions`);
+    const totalTxs = sortedTxs.length;
+    console.log(`Calculating P&L for ${totalTxs} transactions`);
 
-    for (const tx of sortedTxs) {
+    // Progress tracking for P&L calculation
+    let lastProgressUpdate = 0;
+    const PROGRESS_UPDATE_INTERVAL = 100; // Update every 100 transactions
+
+    for (let txIndex = 0; txIndex < sortedTxs.length; txIndex++) {
+      const tx = sortedTxs[txIndex];
       // Skip duplicates
       if (seenSignatures.has(tx.signature)) {
         continue;
       }
       seenSignatures.add(tx.signature);
+
+      // Emit progress update every N transactions
+      if (txIndex - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL || txIndex === totalTxs - 1) {
+        lastProgressUpdate = txIndex;
+        const pnlProgress = (txIndex + 1) / totalTxs;
+        progressCallback(pnlProgress, `Processing transactions: ${(txIndex + 1).toLocaleString()} / ${totalTxs.toLocaleString()}`);
+      }
 
       // Track fees for all transactions
       if (tx.feeSol > 0) {
@@ -72,8 +86,13 @@ class PNLCalculator {
       }
     }
 
+    // Emit progress update before unrealized P&L calculation
+    progressCallback(0.9, 'Calculating unrealized P&L...');
+
     // Calculate unrealized P&L for all active positions
     await this.calculateUnrealizedPNL(positions);
+
+    progressCallback(1.0, 'P&L calculation complete');
 
     // Calculate current holdings value and remaining cost basis
     const activePositions = Object.values(positions).filter(p => p.isActive);

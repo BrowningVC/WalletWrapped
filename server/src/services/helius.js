@@ -7,53 +7,126 @@ const HELIUS_API_URL = `https://api.helius.xyz/v0`;
 const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
 
 /**
+ * Semaphore for controlling concurrent Helius API requests
+ * Prevents rate limiting when 50+ users run analyses simultaneously
+ */
+class Semaphore {
+  constructor(max) {
+    this.max = max;
+    this.current = 0;
+    this.queue = [];
+  }
+
+  async acquire() {
+    if (this.current < this.max) {
+      this.current++;
+      return;
+    }
+    // Wait in queue
+    await new Promise(resolve => this.queue.push(resolve));
+  }
+
+  release() {
+    this.current--;
+    if (this.queue.length > 0) {
+      this.current++;
+      const next = this.queue.shift();
+      next();
+    }
+  }
+
+  async run(fn) {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      this.release();
+    }
+  }
+}
+
+// Helius rate limits by plan:
+// - Free: 10 RPS (1M credits)
+// - Developer ($49/mo): 50 RPS (10M credits)
+// - Business ($499/mo): 200 RPS (100M credits)
+// - Professional ($999/mo): 500 RPS (200M credits)
+//
+// Set via environment variable or default to free tier
+const HELIUS_RPS_LIMIT = parseInt(process.env.HELIUS_RPS_LIMIT) || 10;
+const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
+
+/**
  * Make a Helius API POST request (for enhanced transactions)
+ * Wrapped with semaphore to prevent rate limiting across concurrent users
  */
 async function heliusPostRequest(endpoint, body = {}) {
-  const url = `${HELIUS_API_URL}${endpoint}?api-key=${process.env.HELIUS_API_KEY}`;
+  return heliusSemaphore.run(async () => {
+    const url = `${HELIUS_API_URL}${endpoint}?api-key=${process.env.HELIUS_API_KEY}`;
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+      // Handle rate limit specifically
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After') || 1;
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        throw new Error('Rate limited - will retry');
+      }
+      throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
+    }
+    return response.json();
   });
-
-  if (!response.ok) {
-    throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
-  }
-  return response.json();
 }
 
 /**
  * Make a Helius RPC request
+ * Wrapped with semaphore to prevent rate limiting across concurrent users
  */
 async function heliusRPC(method, params) {
-  const response = await fetch(HELIUS_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method,
-      params
-    })
+  return heliusSemaphore.run(async () => {
+    const response = await fetch(HELIUS_RPC_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method,
+        params
+      })
+    });
+
+    if (!response.ok) {
+      if (response.status === 429) {
+        const retryAfter = response.headers.get('Retry-After') || 1;
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+        throw new Error('Rate limited - will retry');
+      }
+      throw new Error(`Helius RPC error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    if (data.error) {
+      throw new Error(`RPC error: ${data.error.message}`);
+    }
+    return data.result;
   });
-
-  if (!response.ok) {
-    throw new Error(`Helius RPC error: ${response.status}`);
-  }
-
-  const data = await response.json();
-  if (data.error) {
-    throw new Error(`RPC error: ${data.error.message}`);
-  }
-  return data.result;
 }
 
-// Constants - Optimized for speed
-const SIGNATURE_BATCH_SIZE = 500; // RPC getSignaturesForAddress limit (can be up to 1000)
+// Constants - Adjusted based on Helius plan
+const SIGNATURE_BATCH_SIZE = 1000; // RPC allows up to 1000 - use max for fewer round trips
 const ENHANCED_TX_BATCH_SIZE = 100; // Helius Enhanced Transactions API limit
-const PARALLEL_REQUESTS = 5; // Parallel signature fetches
+
+// Scale parallelism based on RPS limit
+// Free (10 RPS): 2 parallel batches
+// Paid (50+ RPS): 20 parallel batches (fetches 2000 txs per round)
+// This is aggressive but the semaphore will throttle if needed
+const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 50 ? 20 : 2;
+const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 50 ? 10 : 3;
+
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 500ms base delay
 
@@ -77,9 +150,47 @@ class HeliusService {
   }
 
   /**
-   * Fetch all transactions for a wallet with parallel pagination
+   * Fetch all signatures for a wallet (fast, no transaction details)
+   * Returns array of signature strings
+   */
+  static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
+    const allSignatures = [];
+    let beforeSignature = null;
+
+    while (true) {
+      const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
+      if (beforeSignature) {
+        params[1].before = beforeSignature;
+      }
+
+      const response = await heliusRPC('getSignaturesForAddress', params);
+
+      if (!response || response.length === 0) {
+        break;
+      }
+
+      const signatures = response.map(tx => tx.signature);
+      allSignatures.push(...signatures);
+      beforeSignature = response[response.length - 1]?.signature;
+
+      // Report progress during signature collection
+      progressCallback(0, allSignatures.length, 'counting');
+
+      // If we got fewer than the batch size, we've reached the end
+      if (response.length < SIGNATURE_BATCH_SIZE) {
+        break;
+      }
+    }
+
+    return allSignatures;
+  }
+
+  /**
+   * Fetch all transactions for a wallet with accurate progress tracking
+   * Two-phase approach: 1) Collect all signatures, 2) Fetch enhanced data
+   * This ensures accurate "remaining" count in progress updates
    * @param {string} walletAddress - Solana wallet address
-   * @param {function} progressCallback - Called with (fetched, estimated) counts
+   * @param {function} progressCallback - Called with (fetched, total) counts
    * @param {string} beforeSignature - Optional: fetch only transactions before this signature
    */
   static async fetchAllTransactions(walletAddress, progressCallback = () => {}, beforeSignature = null) {
@@ -87,99 +198,50 @@ class HeliusService {
       throw new Error('Invalid Solana wallet address');
     }
 
-    const allTransactions = [];
-    const seenSignatures = new Set(); // For deduplication
-    let cursors = [beforeSignature]; // Start with first page or specific signature
-    let totalFetched = 0;
-
     console.log(`Starting transaction fetch for wallet: ${walletAddress}`);
 
-    while (cursors.length > 0) {
-      // Fetch up to 5 pages in parallel
-      const promises = cursors.slice(0, PARALLEL_REQUESTS).map(cursor =>
-        this.fetchTransactionPage(walletAddress, cursor)
+    // Phase 1: Collect all signatures first (fast, gives us accurate total count)
+    console.log(`Phase 1: Collecting signatures...`);
+    const allSignatures = await this.fetchAllSignatures(walletAddress, progressCallback);
+    const totalCount = allSignatures.length;
+    console.log(`Found ${totalCount} total signatures`);
+
+    if (totalCount === 0) {
+      return [];
+    }
+
+    // Phase 2: Fetch enhanced transaction data in parallel batches
+    console.log(`Phase 2: Fetching enhanced transaction data...`);
+    const allTransactions = [];
+    let fetched = 0;
+
+    // Chunk signatures into batches of 100 for Enhanced Transactions API
+    const chunks = [];
+    for (let i = 0; i < allSignatures.length; i += ENHANCED_TX_BATCH_SIZE) {
+      chunks.push(allSignatures.slice(i, i + ENHANCED_TX_BATCH_SIZE));
+    }
+
+    // Process chunks in parallel groups (semaphore handles rate limiting)
+    for (let i = 0; i < chunks.length; i += PARALLEL_ENHANCED_BATCHES) {
+      const batchGroup = chunks.slice(i, i + PARALLEL_ENHANCED_BATCHES);
+      const results = await Promise.all(
+        batchGroup.map(chunk => heliusPostRequest('/transactions', { transactions: chunk }))
       );
 
-      const results = await Promise.all(promises);
-
-      // Process each batch
-      for (const result of results) {
-        if (!result || !result.transactions) continue;
-
-        // Deduplicate and add transactions
-        for (const tx of result.transactions) {
-          if (!seenSignatures.has(tx.signature)) {
-            seenSignatures.add(tx.signature);
-            allTransactions.push(tx);
-            totalFetched++;
-          }
-        }
-      }
-
-      // Update progress
-      progressCallback(totalFetched, totalFetched + 1000);
-
-      // Update cursors for next iteration
-      cursors = results
-        .filter(r => r && r.hasMore && r.cursor)
-        .map(r => r.cursor);
-    }
-
-    console.log(`Fetched ${totalFetched} transactions for wallet: ${walletAddress}`);
-    return allTransactions;
-  }
-
-  /**
-   * Fetch a single page of transactions with retry logic
-   */
-  static async fetchTransactionPage(walletAddress, beforeSignature = null, attempt = 1) {
-    try {
-      // Get signatures using RPC (can fetch up to 500 at once)
-      const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
-      if (beforeSignature) {
-        params[1].before = beforeSignature;
-      }
-
-      const response = await heliusRPC('getSignaturesForAddress', params);
-      const signatures = response.map(tx => tx.signature);
-
-      if (signatures.length === 0) {
-        return { transactions: [], hasMore: false };
-      }
-
-      // Chunk signatures into batches of 100 for Enhanced Transactions API
-      // Process sequentially with small delays to avoid 429 rate limits
-      const allParsedTransactions = [];
-      for (let i = 0; i < signatures.length; i += ENHANCED_TX_BATCH_SIZE) {
-        const chunk = signatures.slice(i, i + ENHANCED_TX_BATCH_SIZE);
-        const parsedChunk = await heliusPostRequest('/transactions', { transactions: chunk });
+      for (const parsedChunk of results) {
         if (Array.isArray(parsedChunk)) {
-          allParsedTransactions.push(...parsedChunk.filter(tx => tx !== null));
-        }
-        // Small delay between chunks to avoid rate limits (50ms)
-        if (i + ENHANCED_TX_BATCH_SIZE < signatures.length) {
-          await this.sleep(50);
+          const validTxs = parsedChunk.filter(tx => tx !== null);
+          allTransactions.push(...validTxs);
+          fetched += validTxs.length;
         }
       }
 
-      return {
-        transactions: allParsedTransactions,
-        hasMore: response.length === SIGNATURE_BATCH_SIZE,
-        cursor: response[response.length - 1]?.signature
-      };
-
-    } catch (error) {
-      // Retry with exponential backoff
-      if (attempt < MAX_RETRIES) {
-        const delay = RETRY_DELAY * Math.pow(2, attempt - 1);
-        console.warn(`Retry attempt ${attempt} after ${delay}ms:`, error.message);
-        await this.sleep(delay);
-        return this.fetchTransactionPage(walletAddress, beforeSignature, attempt + 1);
-      }
-
-      console.error('Failed to fetch transaction page:', error);
-      throw error;
+      // Update progress with accurate counts
+      progressCallback(fetched, totalCount);
     }
+
+    console.log(`Fetched ${allTransactions.length} transactions for wallet: ${walletAddress}`);
+    return allTransactions;
   }
 
   /**
