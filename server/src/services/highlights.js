@@ -21,7 +21,7 @@ class HighlightsGenerator {
     // Get SOL price for USD conversion
     const solPriceUSD = await PriceOracle.getSolPriceUSD();
 
-    // Generate the 6 key highlights
+    // Generate the 6 key highlights (all have fallbacks, none will be null)
     highlights.push(await this.overallPNL(summary, solPriceUSD));
     highlights.push(await this.biggestWin(positions, solPriceUSD));
     highlights.push(await this.biggestLoss(positions, solPriceUSD));
@@ -29,16 +29,14 @@ class HighlightsGenerator {
     highlights.push(await this.longestHold(positions, transactions));
     highlights.push(await this.bestProfitDay(positions, transactions, solPriceUSD));
 
-    // Filter out null highlights and add rank
-    const validHighlights = highlights
-      .filter(h => h !== null)
-      .map((h, index) => ({
-        ...h,
-        rank: index + 1
-      }));
+    // Add rank to each highlight (1-6)
+    const rankedHighlights = highlights.map((h, index) => ({
+      ...h,
+      rank: index + 1
+    }));
 
-    console.log(`Generated ${validHighlights.length} highlights`);
-    return validHighlights;
+    console.log(`Generated ${rankedHighlights.length} highlights`);
+    return rankedHighlights;
   }
 
   /**
@@ -74,7 +72,23 @@ class HighlightsGenerator {
       .filter(p => p.realizedPNL > 0)
       .sort((a, b) => b.realizedPNL - a.realizedPNL)[0];
 
-    if (!winner) return null;
+    // Fallback if no winning trades
+    if (!winner) {
+      return {
+        type: 'biggest_win',
+        title: 'Biggest Win',
+        description: 'No profitable trades yet - your first win is coming!',
+        valuePrimary: '$0',
+        valueSecondary: '(0 SOL)',
+        metadata: {
+          tokenSymbol: null,
+          tokenMint: null,
+          pnlSol: 0,
+          pnlUsd: 0,
+          noData: true
+        }
+      };
+    }
 
     const pnlSol = winner.realizedPNL;
     const pnlUsd = pnlSol * solPriceUSD;
@@ -102,7 +116,23 @@ class HighlightsGenerator {
       .filter(p => p.realizedPNL < 0)
       .sort((a, b) => a.realizedPNL - b.realizedPNL)[0];
 
-    if (!loser) return null;
+    // Fallback if no losing trades
+    if (!loser) {
+      return {
+        type: 'biggest_loss',
+        title: 'Biggest Loss',
+        description: 'No losses yet - keep up the winning streak!',
+        valuePrimary: '$0',
+        valueSecondary: '(0 SOL)',
+        metadata: {
+          tokenSymbol: null,
+          tokenMint: null,
+          pnlSol: 0,
+          pnlUsd: 0,
+          noData: true
+        }
+      };
+    }
 
     const pnlSol = loser.realizedPNL; // Keep negative
     const pnlUsd = pnlSol * solPriceUSD;
@@ -126,7 +156,23 @@ class HighlightsGenerator {
    * 4. Win Rate - Percentage of profitable closed positions
    */
   static async winRate(summary) {
-    if (summary.closedPositions === 0) return null;
+    // Fallback if no closed positions
+    if (summary.closedPositions === 0) {
+      return {
+        type: 'win_rate',
+        title: 'Win Rate',
+        description: 'No completed trades yet - close a position to see your win rate',
+        valuePrimary: '0%',
+        valueSecondary: '0/0 wins',
+        metadata: {
+          winRate: 0,
+          profitablePositions: 0,
+          closedPositions: 0,
+          grade: 'N/A',
+          noData: true
+        }
+      };
+    }
 
     return {
       type: 'win_rate',
@@ -179,7 +225,24 @@ class HighlightsGenerator {
       }
     }
 
-    if (!longestHold || maxDays === 0) return null;
+    // Fallback if no completed holds found
+    if (!longestHold || maxDays === 0) {
+      return {
+        type: 'longest_hold',
+        title: 'Diamond Hands',
+        description: 'No completed holds yet - keep holding!',
+        valuePrimary: '0 days',
+        valueSecondary: 'N/A',
+        metadata: {
+          tokenSymbol: null,
+          tokenMint: null,
+          holdDays: 0,
+          buyDate: null,
+          sellDate: null,
+          noData: true
+        }
+      };
+    }
 
     return {
       type: 'longest_hold',
@@ -245,7 +308,23 @@ class HighlightsGenerator {
       }
     }
 
-    if (!bestDay || maxProfit <= 0) return null;
+    // Fallback if no profitable days
+    if (!bestDay || maxProfit <= 0) {
+      return {
+        type: 'best_profit_day',
+        title: 'Best Day',
+        description: 'No profitable days yet - your best day is ahead!',
+        valuePrimary: '$0',
+        valueSecondary: '(0 SOL)',
+        metadata: {
+          date: null,
+          profitSol: 0,
+          profitUsd: 0,
+          tokens: '',
+          noData: true
+        }
+      };
+    }
 
     const profitUsd = bestDay.profitSol * solPriceUSD;
     const formattedDate = new Date(bestDay.date).toLocaleDateString('en-US', {
