@@ -195,8 +195,8 @@ router.get('/wallet/:address/highlights', async (req, res) => {
       type: h.highlight_type,
       title: h.title,
       description: h.description,
-      valuePrimary: parseFloat(h.value_primary || 0),
-      valueSecondary: parseFloat(h.value_secondary || 0),
+      valuePrimary: h.value_primary || '',
+      valueSecondary: h.value_secondary || '',
       metadata: h.metadata,
       rank: h.rank,
       imageUrl: h.image_url
