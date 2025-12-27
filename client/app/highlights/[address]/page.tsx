@@ -19,8 +19,8 @@ interface ServerHighlight {
   type: string;
   title: string;
   description: string;
-  valuePrimary: number;
-  valueSecondary: number;
+  valuePrimary: string | number;
+  valueSecondary: string | number;
   metadata: HighlightMetadata;
   rank: number;
   imageUrl?: string;
@@ -57,18 +57,13 @@ interface AnalysisData {
 
 // Map server highlight types to display properties
 const highlightConfig: Record<string, { emoji: string; colorScheme: string }> = {
-  biggest_realized_win: { emoji: '🚀', colorScheme: 'profit' },
-  biggest_realized_loss: { emoji: '📉', colorScheme: 'loss' },
-  best_unrealized_gain: { emoji: '💎', colorScheme: 'profit' },
-  worst_unrealized_loss: { emoji: '😰', colorScheme: 'loss' },
-  best_single_trade: { emoji: '🎯', colorScheme: 'profit' },
-  most_traded_token: { emoji: '🔄', colorScheme: 'neutral' },
-  diamond_hands: { emoji: '💎🙌', colorScheme: 'neutral' },
-  paper_hands: { emoji: '📃🙌', colorScheme: 'neutral' },
-  total_realized_pnl: { emoji: '💰', colorScheme: 'default' },
-  total_unrealized_pnl: { emoji: '📊', colorScheme: 'default' },
+  // New 6 key highlights
+  overall_pnl: { emoji: '💰', colorScheme: 'default' },
+  biggest_win: { emoji: '🚀', colorScheme: 'profit' },
+  biggest_loss: { emoji: '📉', colorScheme: 'loss' },
   win_rate: { emoji: '🏆', colorScheme: 'neutral' },
-  best_month: { emoji: '📅', colorScheme: 'profit' },
+  longest_hold: { emoji: '💎', colorScheme: 'neutral' },
+  best_profit_day: { emoji: '📅', colorScheme: 'profit' },
 };
 
 function transformHighlight(serverHighlight: ServerHighlight): Highlight {
@@ -77,61 +72,31 @@ function transformHighlight(serverHighlight: ServerHighlight): Highlight {
   // Determine color scheme based on value if type is pnl-related
   let colorScheme = config.colorScheme;
   if (colorScheme === 'default') {
-    if (serverHighlight.type.includes('pnl')) {
-      colorScheme = serverHighlight.valuePrimary >= 0 ? 'profit' : 'loss';
+    if (serverHighlight.type.includes('pnl') || serverHighlight.type === 'overall_pnl') {
+      // Check if valuePrimary is a string (formatted) or number
+      const numValue = typeof serverHighlight.valuePrimary === 'string'
+        ? parseFloat(serverHighlight.valuePrimary.replace(/[^0-9.-]/g, ''))
+        : serverHighlight.valuePrimary;
+      colorScheme = numValue >= 0 ? 'profit' : 'loss';
     }
   }
 
   // Get token ticker from metadata
   const tokenTicker = serverHighlight.metadata?.tokenSymbol || undefined;
 
-  // Format the primary value
-  let value = '';
-  if (serverHighlight.type === 'win_rate') {
-    value = `${serverHighlight.valuePrimary}%`;
-  } else if (serverHighlight.type === 'most_traded_token') {
-    value = `$${tokenTicker || 'UNKNOWN'}`;
-  } else if (serverHighlight.type === 'diamond_hands' || serverHighlight.type === 'paper_hands') {
-    value = `$${tokenTicker || 'UNKNOWN'}`;
-  } else if (serverHighlight.type === 'best_month') {
-    const sign = serverHighlight.valuePrimary >= 0 ? '+' : '';
-    value = `${sign}${serverHighlight.valuePrimary.toFixed(2)} SOL`;
-  } else {
-    // For token-specific highlights (wins, losses, gains), include ticker
-    const sign = serverHighlight.valuePrimary >= 0 ? '+' : '';
-    const solValue = `${sign}${serverHighlight.valuePrimary.toFixed(2)} SOL`;
-    value = tokenTicker ? `${solValue} ($${tokenTicker})` : solValue;
-  }
+  // The new highlights already have formatted values from the server
+  // valuePrimary is now a string like "+$2,737.96" or "13.64%" or "4 days"
+  // valueSecondary is now a string like "(+22.2779 SOL)" or "3/22 wins"
+  const value = String(serverHighlight.valuePrimary);
+  const subtitle = String(serverHighlight.valueSecondary || '');
 
-  // Format subtitle (USD value or additional context)
-  let subtitle = '';
-  if (serverHighlight.type === 'most_traded_token') {
-    subtitle = `${serverHighlight.valuePrimary} trades`;
-  } else if (serverHighlight.type === 'diamond_hands') {
-    subtitle = `${serverHighlight.valuePrimary} days held`;
-  } else if (serverHighlight.type === 'paper_hands') {
-    subtitle = `Sold after ${serverHighlight.valuePrimary} minutes`;
-  } else if (serverHighlight.valueSecondary && serverHighlight.type !== 'win_rate') {
-    const sign = serverHighlight.valueSecondary >= 0 ? '+' : '';
-    subtitle = `${sign}$${Math.abs(serverHighlight.valueSecondary).toLocaleString(undefined, { maximumFractionDigits: 2 })} USD`;
-  } else if (serverHighlight.metadata?.tradesCount) {
-    subtitle = `${serverHighlight.metadata.tradesCount} trades`;
-  }
-
-  // Build context from metadata
+  // Build context from description
   let context = serverHighlight.description;
-  if (serverHighlight.metadata?.profitPercent) {
-    context = `${serverHighlight.metadata.profitPercent}% return`;
-  } else if (serverHighlight.metadata?.lossPercent) {
-    context = `${serverHighlight.metadata.lossPercent}% loss`;
-  } else if (serverHighlight.metadata?.holdingDays) {
-    context = `Held for ${serverHighlight.metadata.holdingDays} days`;
-  }
 
   return {
     id: `${serverHighlight.type}-${serverHighlight.rank}`,
     type: serverHighlight.type,
-    title: serverHighlight.title.replace(/\s*[🚀📉💎😰🎯🔄📃🙌💰📊🏆📅✨]+\s*/g, '').trim(), // Remove emoji from title, we add our own
+    title: serverHighlight.title,
     value,
     subtitle,
     context,
