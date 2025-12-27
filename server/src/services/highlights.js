@@ -3,8 +3,21 @@ const DatabaseQueries = require('../database/queries');
 
 /**
  * Highlights Generator - Creates 6 key trading performance metrics
+ *
+ * VERSION HISTORY:
+ * v1 - Initial 12 highlights
+ * v2 - Reduced to 6 key highlights with pre-formatted values
+ * v3 - Added fallbacks for all highlights, changed Overall P&L to total (realized+unrealized)
  */
+const HIGHLIGHTS_VERSION = 3;
+
 class HighlightsGenerator {
+  /**
+   * Get current highlights version
+   */
+  static getVersion() {
+    return HIGHLIGHTS_VERSION;
+  }
   /**
    * Generate all highlights for a wallet
    * @param {Object} positions - Token positions map
@@ -29,13 +42,17 @@ class HighlightsGenerator {
     highlights.push(await this.longestHold(positions, transactions));
     highlights.push(await this.bestProfitDay(positions, transactions, solPriceUSD));
 
-    // Add rank to each highlight (1-6)
+    // Add rank and version to each highlight (1-6)
     const rankedHighlights = highlights.map((h, index) => ({
       ...h,
-      rank: index + 1
+      rank: index + 1,
+      metadata: {
+        ...h.metadata,
+        highlightsVersion: HIGHLIGHTS_VERSION
+      }
     }));
 
-    console.log(`Generated ${rankedHighlights.length} highlights`);
+    console.log(`Generated ${rankedHighlights.length} highlights (v${HIGHLIGHTS_VERSION})`);
     return rankedHighlights;
   }
 

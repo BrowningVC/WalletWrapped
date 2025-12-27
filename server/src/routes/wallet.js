@@ -4,6 +4,7 @@ const { PublicKey } = require('@solana/web3.js');
 const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
 const WalletAnalyzer = require('../services/analyzer');
+const HighlightsGenerator = require('../services/highlights');
 
 /**
  * Validate Solana wallet address
@@ -163,7 +164,8 @@ router.get('/wallet/:address/positions', async (req, res) => {
  * GET /api/wallet/:address/highlights
  * Get all highlight cards for wallet
  *
- * Returns: Array of 12 highlight objects
+ * Returns: Array of 6 highlight objects
+ * Auto-refreshes if highlights are outdated (version mismatch)
  */
 router.get('/wallet/:address/highlights', async (req, res) => {
   try {
@@ -178,14 +180,29 @@ router.get('/wallet/:address/highlights', async (req, res) => {
       return res.status(check.status).json({ error: check.error, message: check.message });
     }
 
-    // Try cache first
-    const cached = await CacheManager.getHighlights(address);
-    if (cached) {
-      return res.json(JSON.parse(cached));
-    }
-
     // Get from database
-    const highlights = await DatabaseQueries.getHighlights(address);
+    let highlights = await DatabaseQueries.getHighlights(address);
+
+    // Check if highlights need refresh (version mismatch or wrong count)
+    const currentVersion = HighlightsGenerator.getVersion();
+    const needsRefresh = !highlights ||
+      highlights.length !== 6 ||
+      (highlights[0]?.metadata?.highlightsVersion !== currentVersion);
+
+    if (needsRefresh && highlights && highlights.length > 0) {
+      console.log(`Highlights for ${address} are outdated (v${highlights[0]?.metadata?.highlightsVersion || '?'} vs v${currentVersion}), auto-refreshing...`);
+
+      // Queue a background refresh but return existing data for now
+      // This prevents blocking the request while still updating for next time
+      setImmediate(async () => {
+        try {
+          const { queueAnalysis } = require('../workers/queue');
+          await queueAnalysis(address, { priority: 'low', highlightsOnly: true });
+        } catch (e) {
+          console.error('Failed to queue highlights refresh:', e.message);
+        }
+      });
+    }
 
     if (!highlights || highlights.length === 0) {
       return res.status(404).json({ error: 'Highlights not found' });
@@ -202,7 +219,7 @@ router.get('/wallet/:address/highlights', async (req, res) => {
       imageUrl: h.image_url
     }));
 
-    // Cache for 24 hours
+    // Cache for 24 hours (but will be invalidated on refresh)
     await CacheManager.cacheHighlights(address, JSON.stringify(result));
 
     res.json(result);

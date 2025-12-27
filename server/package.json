@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "worker": "node src/workers/index.js"
+    "worker": "node src/workers/index.js",
+    "refresh-highlights": "node scripts/refresh-all-highlights.js",
+    "refresh-highlights:dry": "node scripts/refresh-all-highlights.js --dry-run"
   },
   "dependencies": {
     "@solana/web3.js": "^1.95.8",
