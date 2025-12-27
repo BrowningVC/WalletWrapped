@@ -29,10 +29,10 @@ async function getWalletsToRefresh() {
 
   // Get all completed analyses
   const result = await query(`
-    SELECT wallet_address, transaction_count, last_update
+    SELECT wallet_address, total_transactions, updated_at
     FROM wallet_analyses
     WHERE analysis_status = 'completed'
-    ORDER BY last_update DESC
+    ORDER BY updated_at DESC
   `);
 
   return result.rows;
