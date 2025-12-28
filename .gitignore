@@ -45,3 +45,14 @@ coverage/
 .cache/
 temp/
 tmp/
+
+# Debug scripts (development/testing only)
+check-*.js
+debug-*.js
+analyze-*.js
+delete-wallet-analysis.js
+query-highlights.js
+get-wallet-volume.js
+test-volume.js
+deep-debug-wallet.js
+nul
