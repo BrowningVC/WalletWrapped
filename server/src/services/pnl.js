@@ -36,9 +36,28 @@ class PNLCalculator {
     const totalTxs = sortedTxs.length;
     console.log(`Calculating P&L for ${totalTxs} transactions`);
 
+    // OPTIMIZATION: Pre-fetch all unique token prices in batch before processing
+    // This avoids individual API calls during the main loop
+    const uniqueMints = [...new Set(sortedTxs.map(tx => tx.tokenMint).filter(Boolean))];
+    console.log(`Pre-fetching prices for ${uniqueMints.length} unique tokens`);
+
+    // Create a sub-progress callback for the price fetching phase (0-30% of calculating step)
+    const priceProgressCallback = (percent, message) => {
+      // Map price fetch progress (0-1) to (0-0.3) of overall calculating progress
+      const mappedProgress = percent * 0.3;
+      progressCallback(mappedProgress, message);
+    };
+
+    const priceCache = await PriceOracle.getBatchPrices(uniqueMints, priceProgressCallback);
+    console.log(`Pre-fetched ${Object.keys(priceCache).length} token prices`);
+
+    // Now we're at 30% - start processing transactions
+    progressCallback(0.3, `Processing ${totalTxs.toLocaleString()} transactions...`);
+
     // Progress tracking for P&L calculation
+    // Transaction processing maps from 30% to 90%
     let lastProgressUpdate = 0;
-    const PROGRESS_UPDATE_INTERVAL = 100; // Update every 100 transactions
+    const PROGRESS_UPDATE_INTERVAL = Math.max(50, Math.floor(totalTxs / 20)); // Update ~20 times during processing
 
     for (let txIndex = 0; txIndex < sortedTxs.length; txIndex++) {
       const tx = sortedTxs[txIndex];
@@ -51,8 +70,10 @@ class PNLCalculator {
       // Emit progress update every N transactions
       if (txIndex - lastProgressUpdate >= PROGRESS_UPDATE_INTERVAL || txIndex === totalTxs - 1) {
         lastProgressUpdate = txIndex;
-        const pnlProgress = (txIndex + 1) / totalTxs;
-        progressCallback(pnlProgress, `Processing transactions: ${(txIndex + 1).toLocaleString()} / ${totalTxs.toLocaleString()}`);
+        // Map (0-1) transaction progress to (0.3-0.9) overall progress
+        const txProgress = (txIndex + 1) / totalTxs;
+        const mappedProgress = 0.3 + (txProgress * 0.6);
+        progressCallback(mappedProgress, `Processing transactions: ${(txIndex + 1).toLocaleString()} / ${totalTxs.toLocaleString()}`);
       }
 
       // Track fees for all transactions
@@ -78,7 +99,8 @@ class PNLCalculator {
       const position = positions[tx.tokenMint];
 
       // Update position based on transaction type (FIFO method for per-token P&L)
-      await this.processTransaction(position, tx);
+      // Pass priceCache to avoid async lookups during processing
+      this.processTransaction(position, tx, priceCache);
 
       // Update daily P&L (only for sells/transfers)
       if (tx.type === 'SELL' || tx.type === 'TRANSFER_OUT') {
@@ -90,7 +112,8 @@ class PNLCalculator {
     progressCallback(0.9, 'Calculating unrealized P&L...');
 
     // Calculate unrealized P&L for all active positions
-    await this.calculateUnrealizedPNL(positions);
+    // Pass the pre-fetched price cache to avoid redundant API calls
+    await this.calculateUnrealizedPNL(positions, priceCache);
 
     progressCallback(1.0, 'P&L calculation complete');
 
@@ -172,6 +195,13 @@ class PNLCalculator {
     // For SELL: SOL enters wallet (received)
     // Note: We track the solAmount which represents actual SOL movement
 
+    // SANITY CHECK: Detect suspicious transaction amounts
+    // Single transaction > 10,000 SOL is very unusual and may indicate parsing error
+    const MAX_REASONABLE_TX_SOL = 10000;
+    if (tx.solAmount > MAX_REASONABLE_TX_SOL) {
+      console.warn(`[SOL FLOW SANITY] Large tx detected: ${tx.solAmount.toFixed(4)} SOL, type=${tx.type}, token=${tx.tokenSymbol}, sig=${tx.signature?.slice(0, 20)}...`);
+    }
+
     switch (tx.type) {
       case 'BUY':
         // SOL spent on buying tokens
@@ -196,8 +226,11 @@ class PNLCalculator {
 
   /**
    * Process a single transaction and update position
+   * @param {Object} position - Position to update
+   * @param {Object} tx - Transaction to process
+   * @param {Object} priceCache - Pre-fetched prices for all tokens (optimization)
    */
-  static async processTransaction(position, tx) {
+  static processTransaction(position, tx, priceCache = {}) {
     // Update first/last trade dates
     const txDate = new Date(tx.blockTime);
     if (!position.firstTradeDate || txDate < position.firstTradeDate) {
@@ -217,7 +250,7 @@ class PNLCalculator {
         break;
 
       case 'SELL':
-        await this.processSell(position, tx);
+        this.processSell(position, tx);
         break;
 
       case 'TRANSFER_IN':
@@ -225,7 +258,7 @@ class PNLCalculator {
         break;
 
       case 'TRANSFER_OUT':
-        await this.processTransferOut(position, tx);
+        this.processTransferOut(position, tx, priceCache);
         break;
     }
 
@@ -266,7 +299,7 @@ class PNLCalculator {
   /**
    * Process SELL transaction with FIFO cost basis
    */
-  static async processSell(position, tx) {
+  static processSell(position, tx) {
     let remainingToSell = tx.tokenAmount;
     let totalCostBasis = 0;
 
@@ -337,12 +370,15 @@ class PNLCalculator {
 
   /**
    * Process TRANSFER_OUT transaction
+   * @param {Object} position - Position to update
+   * @param {Object} tx - Transaction to process
+   * @param {Object} priceCache - Pre-fetched prices for all tokens (optimization)
    */
-  static async processTransferOut(position, tx) {
-    // Get current price for estimation
+  static processTransferOut(position, tx, priceCache = {}) {
+    // Get current price for estimation from pre-fetched cache
     let currentPrice = tx.priceSol;
     if (currentPrice === 0) {
-      currentPrice = await PriceOracle.getCurrentTokenPrice(tx.tokenMint);
+      currentPrice = priceCache[tx.tokenMint] || 0;
     }
 
     const estimatedValue = tx.tokenAmount * currentPrice;
@@ -386,8 +422,10 @@ class PNLCalculator {
 
   /**
    * Calculate unrealized P&L for all active positions
+   * @param {Object} positions - All positions
+   * @param {Object} priceCache - Pre-fetched prices (optimization - avoids redundant API calls)
    */
-  static async calculateUnrealizedPNL(positions) {
+  static async calculateUnrealizedPNL(positions, priceCache = {}) {
     const activeMints = Object.keys(positions).filter(
       mint => positions[mint].isActive
     );
@@ -396,8 +434,15 @@ class PNLCalculator {
 
     console.log(`Calculating unrealized P&L for ${activeMints.length} active positions`);
 
-    // Batch fetch current prices
-    const prices = await PriceOracle.getBatchPrices(activeMints);
+    // Use pre-fetched prices if available, otherwise batch fetch
+    // This avoids redundant API calls when priceCache was populated earlier
+    let prices = priceCache;
+    const missingMints = activeMints.filter(mint => !(mint in priceCache));
+    if (missingMints.length > 0) {
+      console.log(`Fetching ${missingMints.length} missing prices for unrealized P&L`);
+      const additionalPrices = await PriceOracle.getBatchPrices(missingMints);
+      prices = { ...priceCache, ...additionalPrices };
+    }
 
     for (const mint of activeMints) {
       const position = positions[mint];

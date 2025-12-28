@@ -14,8 +14,9 @@ const DatabaseQueries = require('../database/queries');
  * v7 - Fixed best profit day calculation to use dailyPNL aggregates instead of position.trades
  * v8 - Temporarily used total P&L (reverted)
  * v9 - Use REALIZED P&L only for Win/Loss/WinRate (matches GMGN.ai) + PumpFun accountData fix
+ * v10 - Added sanity checks for unreasonably high P&L values (>100k SOL), falls back to FIFO if needed
  */
-const HIGHLIGHTS_VERSION = 9;
+const HIGHLIGHTS_VERSION = 10;
 
 // Stablecoins and wrapped tokens to exclude from win/loss calculations
 // These are used for swapping, not trading
@@ -82,7 +83,34 @@ class HighlightsGenerator {
    * 1. Overall PNL this year - Total P&L (realized + unrealized) with USD and SOL
    */
   static async overallPNL(summary, solPriceUSD) {
-    const pnlSol = summary.totalPNL; // Realized + Unrealized
+    let pnlSol = summary.totalPNL; // Realized + Unrealized
+
+    // SANITY CHECK: Detect potentially incorrect P&L values
+    // If P&L exceeds 100,000 SOL (abs value), it's likely a calculation error
+    // Log details to help debug the root cause
+    const MAX_REASONABLE_PNL_SOL = 100000;
+    if (Math.abs(pnlSol) > MAX_REASONABLE_PNL_SOL) {
+      console.error(`[SANITY CHECK] Unreasonably high P&L detected: ${pnlSol.toFixed(4)} SOL`);
+      console.error(`[SANITY CHECK] Summary details:`, JSON.stringify({
+        totalPNL: summary.totalPNL,
+        totalRealizedPNL: summary.totalRealizedPNL,
+        totalUnrealizedPNL: summary.totalUnrealizedPNL,
+        fifoRealizedPNL: summary.fifoRealizedPNL,
+        fifoUnrealizedPNL: summary.fifoUnrealizedPNL,
+        totalBuyVolumeSol: summary.totalBuyVolumeSol,
+        totalSellVolumeSol: summary.totalSellVolumeSol,
+        pnlMethod: summary.pnlMethod,
+        activePositions: summary.activePositions,
+        closedPositions: summary.closedPositions
+      }, null, 2));
+
+      // Fall back to FIFO calculation which may be more reliable
+      if (summary.fifoTotalPNL !== undefined && Math.abs(summary.fifoTotalPNL) < MAX_REASONABLE_PNL_SOL) {
+        console.warn(`[SANITY CHECK] Falling back to FIFO P&L: ${summary.fifoTotalPNL.toFixed(4)} SOL`);
+        pnlSol = summary.fifoTotalPNL;
+      }
+    }
+
     const pnlUsd = pnlSol * solPriceUSD;
 
     return {
@@ -149,7 +177,7 @@ class HighlightsGenerator {
     return {
       type: 'biggest_win',
       title: 'Biggest Win',
-      description: `Your most profitable token was ${winner.tokenSymbol}`,
+      description: `Your most profitable token was $${winner.tokenSymbol}`,
       valuePrimary: this.roundUsd(pnlUsd), // Numeric value
       valueSecondary: this.roundSol(pnlSol), // Numeric value
       metadata: {
@@ -198,7 +226,7 @@ class HighlightsGenerator {
     return {
       type: 'biggest_loss',
       title: 'Biggest Loss',
-      description: `Your biggest loss was on ${loser.tokenSymbol}`,
+      description: `Your biggest loss was on $${loser.tokenSymbol}`,
       valuePrimary: this.roundUsd(pnlUsd), // Numeric value
       valueSecondary: this.roundSol(pnlSol), // Numeric value
       metadata: {
@@ -317,7 +345,7 @@ class HighlightsGenerator {
     return {
       type: 'longest_hold',
       title: 'Diamond Hands',
-      description: `You held ${longestHold.position.tokenSymbol} for ${maxDays} days before selling`,
+      description: `You held $${longestHold.position.tokenSymbol} for ${maxDays} days before selling`,
       valuePrimary: maxDays, // Numeric value (days)
       valueSecondary: maxDays, // Numeric value (also days, for consistency)
       metadata: {
@@ -327,7 +355,7 @@ class HighlightsGenerator {
         buyDate: longestHold.buyDate.toISOString(),
         sellDate: longestHold.sellDate.toISOString(),
         formattedPrimary: `${maxDays} days`,
-        formattedSecondary: longestHold.position.tokenSymbol
+        formattedSecondary: `$${longestHold.position.tokenSymbol}`
       }
     };
   }

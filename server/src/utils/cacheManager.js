@@ -16,7 +16,8 @@ class CacheManager {
     ANALYSIS_RESULT: 86400,       // 24 hours for completed analysis
     WALLET_SUMMARY: 86400,        // 24 hours for wallet summary
     HIGHLIGHTS: 86400,            // 24 hours for highlights
-    DAILY_PNL: 86400             // 24 hours for daily P&L
+    DAILY_PNL: 86400,            // 24 hours for daily P&L
+    CARD_IMAGE: 86400            // 24 hours for card images
   };
 
   /**
@@ -142,6 +143,45 @@ class CacheManager {
 
   /**
    * ============================================================================
+   * CARD IMAGE CACHING
+   * ============================================================================
+   */
+
+  /**
+   * Cache a pre-generated card image (PNG as base64)
+   * @param {string} walletAddress - Wallet address
+   * @param {number} cardIndex - Card index (0-5) or 'summary'
+   * @param {Buffer} imageBuffer - PNG image buffer
+   */
+  static async cacheCardImage(walletAddress, cardIndex, imageBuffer) {
+    const key = `card:${walletAddress}:${cardIndex}`;
+    await redis.setBinary(key, this.TTL.CARD_IMAGE, imageBuffer);
+  }
+
+  /**
+   * Get cached card image
+   * @param {string} walletAddress - Wallet address
+   * @param {number} cardIndex - Card index (0-5) or 'summary'
+   * @returns {Promise<Buffer|null>} PNG image buffer or null if not cached
+   */
+  static async getCardImage(walletAddress, cardIndex) {
+    const key = `card:${walletAddress}:${cardIndex}`;
+    return await redis.getBinary(key);
+  }
+
+  /**
+   * Check if all card images are cached for a wallet
+   * @param {string} walletAddress - Wallet address
+   * @returns {Promise<boolean>}
+   */
+  static async hasAllCardImages(walletAddress) {
+    const keys = [0, 1, 2, 3, 4, 5].map(i => `card:${walletAddress}:${i}`);
+    const results = await Promise.all(keys.map(key => redis.exists(key)));
+    return results.every(exists => exists === 1);
+  }
+
+  /**
+   * ============================================================================
    * INVALIDATION
    * ============================================================================
    */
@@ -150,7 +190,15 @@ class CacheManager {
     const keys = [
       `wallet:${walletAddress}:summary`,
       `highlights:${walletAddress}`,
-      `progress:${walletAddress}`
+      `progress:${walletAddress}`,
+      // Card images (0-5 and summary)
+      `card:${walletAddress}:0`,
+      `card:${walletAddress}:1`,
+      `card:${walletAddress}:2`,
+      `card:${walletAddress}:3`,
+      `card:${walletAddress}:4`,
+      `card:${walletAddress}:5`,
+      `card:${walletAddress}:summary`
     ];
 
     // Also invalidate all daily PNL keys for this wallet (using SCAN)

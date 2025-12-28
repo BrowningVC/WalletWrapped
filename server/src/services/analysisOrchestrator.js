@@ -15,7 +15,8 @@ const RateLimiter = require('../utils/rateLimiter');
  */
 
 // Track active analyses for cancellation support
-const activeAnalyses = new Map(); // walletAddress -> { abortController, startTime }
+// walletAddress -> { abortController, startTime, cleanedUp }
+const activeAnalyses = new Map();
 
 // Constants for cleanup
 // With 30k tx limit: ~40 minutes max + 5 minute buffer = 45 minutes
@@ -25,15 +26,21 @@ const CLEANUP_INTERVAL = 10 * 60 * 1000; // Check for stale entries every 10 min
 // Socket.io instance (set by server)
 let io = null;
 
-// Periodic cleanup of stale entries
+// Periodic cleanup of stale entries - marks as cleaned to prevent double-cleanup
 setInterval(() => {
   const now = Date.now();
   let cleanedCount = 0;
 
   for (const [address, data] of activeAnalyses.entries()) {
+    // Skip if already cleaned up by another process
+    if (data.cleanedUp) continue;
+
     const age = now - data.startTime;
     if (age > MAX_ANALYSIS_DURATION) {
       console.warn(`Cleaning up stale analysis entry: ${address} (age: ${Math.round(age / 1000 / 60)}min)`);
+      // Mark as cleaned up first to prevent race conditions
+      data.cleanedUp = true;
+      data.abortController.abort();
       activeAnalyses.delete(address);
       // Release lock without awaiting to prevent blocking
       RateLimiter.releaseDuplicateLock(address).catch(err =>
@@ -152,11 +159,16 @@ async function runAnalysis(walletAddress, incremental = false) {
   const abortController = new AbortController();
 
   // Track this analysis for cancellation support
-  activeAnalyses.set(walletAddress, { abortController, startTime });
+  const analysisState = { abortController, startTime, cleanedUp: false };
+  activeAnalyses.set(walletAddress, analysisState);
 
   // Safety timeout - force cleanup after max duration
   const cleanupTimeout = setTimeout(() => {
+    // Check if already cleaned up to prevent double-cleanup
+    if (analysisState.cleanedUp) return;
+
     console.error(`Analysis timeout for ${walletAddress}, forcing cleanup`);
+    analysisState.cleanedUp = true;
     abortController.abort();
     activeAnalyses.delete(walletAddress);
     RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
@@ -268,6 +280,40 @@ async function runAnalysis(walletAddress, incremental = false) {
       dailyPNL: JSON.stringify(dailyPNL)
     });
 
+    await emitProgress(walletAddress, 96, 'Pre-generating card images...');
+
+    // Pre-generate and cache all card images for instant loading
+    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+
+    // Generate all 6 cards + summary in parallel, fetch PNG and cache in Redis
+    const cardPromises = [0, 1, 2, 3, 4, 5, 'summary'].map(async (cardIndex) => {
+      try {
+        const url = cardIndex === 'summary'
+          ? `${clientUrl}/api/card/${walletAddress}/summary`
+          : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
+
+        const response = await fetch(url);
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
+          return { cardIndex, success: true };
+        }
+        return { cardIndex, success: false, error: `HTTP ${response.status}` };
+      } catch (err) {
+        return { cardIndex, success: false, error: err.message };
+      }
+    });
+
+    const cardResults = await Promise.all(cardPromises);
+    const successCount = cardResults.filter(r => r.success).length;
+    const failedCards = cardResults.filter(r => !r.success);
+
+    if (failedCards.length > 0) {
+      console.warn(`Some cards failed to pre-generate for ${walletAddress}:`, failedCards);
+    }
+    console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress}`);
+
     await emitProgress(walletAddress, 100, 'Analysis complete!');
 
     // Update database status to completed
@@ -312,12 +358,17 @@ async function runAnalysis(walletAddress, incremental = false) {
     throw error;
 
   } finally {
-    // Always clean up: clear timeout first, then remove from tracking
+    // Always clear the timeout
     clearTimeout(cleanupTimeout);
-    activeAnalyses.delete(walletAddress);
-    await RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
-      console.error(`Finally block lock release failed for ${walletAddress}:`, err)
-    );
+
+    // Only clean up if not already done by timeout or interval cleanup
+    if (!analysisState.cleanedUp) {
+      analysisState.cleanedUp = true;
+      activeAnalyses.delete(walletAddress);
+      await RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
+        console.error(`Finally block lock release failed for ${walletAddress}:`, err)
+      );
+    }
   }
 }
 

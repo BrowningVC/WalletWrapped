@@ -173,7 +173,7 @@ class HeliusService {
    * Enforces MAX_TRANSACTION_LIMIT to prevent bot wallet analysis
    */
   static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
-    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 1000;
+    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 30000;
     const allSignatures = [];
     let beforeSignature = null;
 
@@ -520,6 +520,23 @@ class HeliusService {
     } else {
       normalized.solAmount = solOut;
     }
+
+    // SANITY CHECK: Detect suspiciously large SOL amounts which may indicate parsing error
+    // A single swap > 10,000 SOL is extremely rare and likely a bug
+    const MAX_REASONABLE_SWAP_SOL = 10000;
+    if (normalized.solAmount > MAX_REASONABLE_SWAP_SOL) {
+      console.error(`[HELIUS SANITY] Suspiciously large solAmount: ${normalized.solAmount.toFixed(4)} SOL`);
+      console.error(`[HELIUS SANITY] Transaction details:`, {
+        signature: heliusTx.signature,
+        type: normalized.type,
+        tokenMint: normalized.tokenMint,
+        tokenAmount: normalized.tokenAmount,
+        nativeBalanceChange: walletAccountData?.nativeBalanceChange,
+        solIn,
+        solOut,
+        accountDataPresent: !!walletAccountData
+      });
+    }
   }
 
   /**
@@ -564,9 +581,15 @@ class HeliusService {
     // Check Redis cache second
     const cached = await redis.get(`token:${mint}:metadata`);
     if (cached) {
-      // Populate in-memory cache for next time
-      metadataCache.set(mint, cached);
-      return cached;
+      try {
+        // Parse JSON from Redis
+        const parsed = JSON.parse(cached);
+        // Populate in-memory cache for next time
+        metadataCache.set(mint, parsed);
+        return parsed;
+      } catch {
+        // Invalid cache entry, will re-fetch below
+      }
     }
 
     try {
@@ -597,7 +620,7 @@ class HeliusService {
       };
 
       // Cache in both Redis (7 days) and in-memory
-      await redis.setex(`token:${mint}:metadata`, 604800, info);
+      await redis.setex(`token:${mint}:metadata`, 604800, JSON.stringify(info));
       metadataCache.set(mint, info);
       return info;
 
@@ -614,6 +637,122 @@ class HeliusService {
   }
 
   /**
+   * Batch fetch token metadata for multiple mints (much faster than individual calls)
+   * Uses Helius getAssetBatch API to fetch up to 1000 assets at once
+   * @param {Array<string>} mints - Array of token mint addresses
+   * @param {Function} progressCallback - Optional callback(percent, message)
+   */
+  static async batchFetchTokenMetadata(mints, progressCallback = () => {}) {
+    if (!mints || mints.length === 0) return;
+
+    // Filter out mints we already have cached
+    const uncachedMints = [];
+    for (const mint of mints) {
+      if (!metadataCache.has(mint)) {
+        const cached = await redis.get(`token:${mint}:metadata`);
+        if (cached) {
+          try {
+            metadataCache.set(mint, JSON.parse(cached));
+          } catch {
+            uncachedMints.push(mint);
+          }
+        } else {
+          uncachedMints.push(mint);
+        }
+      }
+    }
+
+    if (uncachedMints.length === 0) {
+      progressCallback(1.0, 'All token metadata cached');
+      return;
+    }
+
+    console.log(`Batch fetching metadata for ${uncachedMints.length} tokens...`);
+    progressCallback(0, `Fetching metadata for ${uncachedMints.length} tokens...`);
+
+    // Helius getAssetBatch supports up to 1000 assets per request
+    const BATCH_SIZE = 1000;
+    let processed = 0;
+
+    for (let i = 0; i < uncachedMints.length; i += BATCH_SIZE) {
+      const batch = uncachedMints.slice(i, i + BATCH_SIZE);
+
+      try {
+        const response = await fetch(HELIUS_RPC_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'getAssetBatch',
+            params: { ids: batch }
+          })
+        });
+
+        const data = await response.json();
+        const assets = data.result || [];
+
+        for (const asset of assets) {
+          if (asset && asset.id) {
+            const info = {
+              mint: asset.id,
+              symbol: asset.content?.metadata?.symbol || 'UNKNOWN',
+              name: asset.content?.metadata?.name || 'Unknown Token',
+              decimals: asset.token_info?.decimals || 9,
+              supply: asset.token_info?.supply || 0
+            };
+
+            // Cache in both Redis and memory
+            await redis.setex(`token:${asset.id}:metadata`, 604800, JSON.stringify(info));
+            metadataCache.set(asset.id, info);
+          }
+        }
+
+        // For any mints not returned by the API, set UNKNOWN
+        const returnedMints = new Set(assets.map(a => a?.id).filter(Boolean));
+        for (const mint of batch) {
+          if (!returnedMints.has(mint) && !metadataCache.has(mint)) {
+            const unknownInfo = { mint, symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 9, supply: 0 };
+            await redis.setex(`token:${mint}:metadata`, 86400, JSON.stringify(unknownInfo)); // 1 day cache for unknown
+            metadataCache.set(mint, unknownInfo);
+          }
+        }
+      } catch (error) {
+        console.error(`Batch metadata fetch error:`, error.message);
+        // Set UNKNOWN for failed batch
+        for (const mint of batch) {
+          if (!metadataCache.has(mint)) {
+            metadataCache.set(mint, { mint, symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 9, supply: 0 });
+          }
+        }
+      }
+
+      processed += batch.length;
+      progressCallback(processed / uncachedMints.length, `Fetched metadata: ${processed}/${uncachedMints.length}`);
+    }
+
+    console.log(`Batch metadata fetch complete: ${processed} tokens`);
+  }
+
+  /**
+   * Extract unique token mints from raw transactions (before parsing)
+   * @param {Array} rawTransactions - Raw Helius transactions
+   * @returns {Array<string>} - Unique token mint addresses
+   */
+  static extractUniqueMints(rawTransactions) {
+    const mints = new Set();
+    for (const tx of rawTransactions) {
+      const tokenTransfers = tx.tokenTransfers || [];
+      for (const transfer of tokenTransfers) {
+        if (transfer.mint && transfer.mint !== SOL_MINT && !STABLECOINS.has(transfer.mint)) {
+          mints.add(transfer.mint);
+        }
+      }
+    }
+    return Array.from(mints);
+  }
+
+  /**
    * Fetch transactions after a specific signature (for incremental updates)
    */
   static async getTransactionsAfter(walletAddress, afterSignature) {
@@ -625,7 +764,7 @@ class HeliusService {
     let cursor = null;
 
     while (true) {
-      const params = [walletAddress, { limit: BATCH_SIZE }];
+      const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
       if (cursor) {
         params[1].before = cursor;
       }

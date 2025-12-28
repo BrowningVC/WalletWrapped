@@ -230,6 +230,12 @@ router.get('/wallet/:address/highlights', async (req, res) => {
       return res.status(400).json({ error: 'Invalid wallet address' });
     }
 
+    // Try cache first for fast response (especially important for OG image generation)
+    const cached = await CacheManager.getHighlights(address);
+    if (cached) {
+      return res.json(JSON.parse(cached));
+    }
+
     // Check if analysis exists (but don't require it to be completed)
     const analysis = await DatabaseQueries.getAnalysis(address);
     if (!analysis) {
@@ -428,6 +434,51 @@ router.post('/wallet/:address/refresh', validateCSRFToken, async (req, res) => {
 
   } catch (error) {
     console.error('Refresh endpoint error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * GET /api/wallet/:address/card/:index
+ * Get pre-generated card image from cache
+ *
+ * Params:
+ * - address: Wallet address
+ * - index: Card index (0-5) or 'summary'
+ *
+ * Returns: PNG image or 404 if not cached
+ */
+router.get('/wallet/:address/card/:index', async (req, res) => {
+  try {
+    const { address, index } = req.params;
+
+    if (!isValidSolanaAddress(address)) {
+      return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+
+    // Validate index
+    const validIndices = ['0', '1', '2', '3', '4', '5', 'summary'];
+    if (!validIndices.includes(index)) {
+      return res.status(400).json({ error: 'Invalid card index' });
+    }
+
+    // Get cached image
+    const imageBuffer = await CacheManager.getCardImage(address, index);
+
+    if (!imageBuffer) {
+      return res.status(404).json({ error: 'Card image not cached' });
+    }
+
+    // Return PNG image
+    res.set({
+      'Content-Type': 'image/png',
+      'Content-Length': imageBuffer.length,
+      'Cache-Control': 'public, max-age=86400', // 24 hours
+    });
+    res.send(imageBuffer);
+
+  } catch (error) {
+    console.error('Card image endpoint error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

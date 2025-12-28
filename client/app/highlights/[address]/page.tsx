@@ -7,6 +7,14 @@ import Logo from '@/components/Logo';
 import WalletCounter from '@/components/WalletCounter';
 import Fireworks from '@/components/Fireworks';
 
+// Format number with commas (e.g., 352898 -> 352,898)
+function formatNumberWithCommas(num: number): string {
+  // Handle decimals properly
+  const parts = num.toString().split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return parts.join('.');
+}
+
 // SVG Icon Components
 const Icons = {
   // Highlight icons
@@ -182,7 +190,7 @@ function transformHighlight(serverHighlight: ServerHighlight): Highlight {
         if (isNaN(numValue)) {
           value = '$0';
         } else {
-          value = numValue >= 0 ? `+$${Math.abs(numValue)}` : `-$${Math.abs(numValue)}`;
+          value = numValue >= 0 ? `+$${formatNumberWithCommas(Math.abs(numValue))}` : `-$${formatNumberWithCommas(Math.abs(numValue))}`;
         }
       }
       if (subtitle && !subtitle.includes('SOL') && !subtitle.includes('(')) {
@@ -190,7 +198,16 @@ function transformHighlight(serverHighlight: ServerHighlight): Highlight {
         if (isNaN(numSol)) {
           subtitle = '0 SOL';
         } else {
-          subtitle = numSol >= 0 ? `+${Math.abs(numSol)} SOL` : `-${Math.abs(numSol)} SOL`;
+          subtitle = numSol >= 0 ? `+${formatNumberWithCommas(Math.abs(numSol))} SOL` : `-${formatNumberWithCommas(Math.abs(numSol))} SOL`;
+        }
+      }
+      // Also format values that already have $ sign but no commas
+      if (value.includes('$') && !value.includes(',')) {
+        const numMatch = value.match(/[+-]?\$?([\d.]+)/);
+        if (numMatch) {
+          const numValue = parseFloat(numMatch[1]);
+          const sign = value.startsWith('-') ? '-' : '+';
+          value = `${sign}$${formatNumberWithCommas(numValue)}`;
         }
       }
       break;
@@ -402,67 +419,83 @@ export default function HighlightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentCard, setCurrentCard] = useState(0);
-  const [imageTimestamp, setImageTimestamp] = useState(Date.now()); // Cache busting timestamp
+  const [imageLoading, setImageLoading] = useState(true); // Track card image loading state
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success' | 'error'>('idle');
   const [revealedCards, setRevealedCards] = useState<Set<number>>(new Set([0])); // Track which cards have been revealed (start with first card revealed)
   const [sparklingCard, setSparklingCard] = useState<number | null>(null); // Track which card is currently sparkling
   const cardRef = useRef<HTMLDivElement>(null);
+  const preloadedImages = useRef<Set<number>>(new Set()); // Track which images are preloaded
 
   useEffect(() => {
     if (!address) return;
-    fetchHighlights();
-  }, [address]);
 
-  const fetchHighlights = async (retryCount = 0) => {
-    const maxRetries = 3;
-    const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
+    const abortController = new AbortController();
+    let retryTimeout: NodeJS.Timeout | null = null;
 
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+    const fetchHighlights = async (retryCount = 0) => {
+      const maxRetries = 3;
+      const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
 
-      const [summaryRes, highlightsRes] = await Promise.all([
-        fetch(`${apiUrl}/api/wallet/${address}/summary`),
-        fetch(`${apiUrl}/api/wallet/${address}/highlights`)
-      ]);
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
 
-      if (!summaryRes.ok || !highlightsRes.ok) {
-        throw new Error('Failed to fetch wallet data');
-      }
+        const [summaryRes, highlightsRes] = await Promise.all([
+          fetch(`${apiUrl}/api/wallet/${address}/summary`, { signal: abortController.signal }),
+          fetch(`${apiUrl}/api/wallet/${address}/highlights`, { signal: abortController.signal })
+        ]);
 
-      const [summaryData, highlightsData] = await Promise.all([
-        summaryRes.json(),
-        highlightsRes.json()
-      ]);
+        if (!summaryRes.ok || !highlightsRes.ok) {
+          throw new Error('Failed to fetch wallet data');
+        }
 
-      const transformedHighlights = (highlightsData as ServerHighlight[]).map(transformHighlight);
+        const [summaryData, highlightsData] = await Promise.all([
+          summaryRes.json(),
+          highlightsRes.json()
+        ]);
 
-      setData({
-        summary: {
-          walletAddress: address,
-          totalRealizedPNL: summaryData.totalRealizedPNL || 0,
-          totalUnrealizedPNL: summaryData.totalUnrealizedPNL || 0,
-          totalPNL: summaryData.totalPNL || 0,
-          transactionCount: summaryData.transactionCount || 0,
-          activePositions: summaryData.activePositions || 0,
-          closedPositions: summaryData.closedPositions || 0,
-          winRate: summaryData.winRate || 0,
-        },
-        highlights: transformedHighlights,
-      });
-      setLoading(false);
-    } catch (err: any) {
-      console.error(`Failed to fetch highlights (attempt ${retryCount + 1}):`, err);
+        // Don't update state if aborted
+        if (abortController.signal.aborted) return;
 
-      // Retry if we haven't exceeded max retries
-      if (retryCount < maxRetries) {
-        console.log(`Retrying in ${retryDelay}ms...`);
-        setTimeout(() => fetchHighlights(retryCount + 1), retryDelay);
-      } else {
-        setError(err.message || 'Failed to load highlights');
+        const transformedHighlights = (highlightsData as ServerHighlight[]).map(transformHighlight);
+
+        setData({
+          summary: {
+            walletAddress: address,
+            totalRealizedPNL: summaryData.totalRealizedPNL || 0,
+            totalUnrealizedPNL: summaryData.totalUnrealizedPNL || 0,
+            totalPNL: summaryData.totalPNL || 0,
+            transactionCount: summaryData.transactionCount || 0,
+            activePositions: summaryData.activePositions || 0,
+            closedPositions: summaryData.closedPositions || 0,
+            winRate: summaryData.winRate || 0,
+          },
+          highlights: transformedHighlights,
+        });
         setLoading(false);
+      } catch (err: any) {
+        // Ignore abort errors
+        if (err.name === 'AbortError') return;
+
+        console.error(`Failed to fetch highlights (attempt ${retryCount + 1}):`, err);
+
+        // Retry if we haven't exceeded max retries
+        if (retryCount < maxRetries && !abortController.signal.aborted) {
+          console.log(`Retrying in ${retryDelay}ms...`);
+          retryTimeout = setTimeout(() => fetchHighlights(retryCount + 1), retryDelay);
+        } else if (!abortController.signal.aborted) {
+          setError(err.message || 'Failed to load highlights');
+          setLoading(false);
+        }
       }
-    }
-  };
+    };
+
+    fetchHighlights();
+
+    return () => {
+      abortController.abort();
+      if (retryTimeout) clearTimeout(retryTimeout);
+    };
+  }, [address]);
 
   const formatPNL = (value: number) => {
     const formatted = Math.abs(value).toFixed(2);
@@ -480,19 +513,80 @@ export default function HighlightsPage() {
     }
   };
 
+  // Preload adjacent card images for faster navigation
+  const preloadCard = (idx: number) => {
+    if (idx < 0 || !data || idx >= data.highlights.length) return;
+    if (preloadedImages.current.has(idx)) return;
+
+    const img = new Image();
+    img.onload = () => {
+      // Successfully preloaded
+      preloadedImages.current.add(idx);
+    };
+    img.onerror = () => {
+      // Remove from set so it can be retried on next navigation
+      preloadedImages.current.delete(idx);
+      console.warn(`Failed to preload card ${idx}, will retry on next access`);
+    };
+    // Mark as loading to prevent duplicate requests
+    preloadedImages.current.add(idx);
+    img.src = `/api/card/${address}/${idx}`;
+  };
+
+  // Preload card 0 immediately on mount (before data loads) for fastest first card
+  // The analyze page already starts this preload, but this ensures it's requested early
+  useEffect(() => {
+    if (!address) return;
+    // Preload first card immediately - even before highlights data is ready
+    preloadCard(0);
+  }, [address]);
+
+  // Preload remaining cards in staggered batches after data loads
+  useEffect(() => {
+    if (!data) return;
+
+    // Card 0 already preloaded above, start with card 1 immediately
+    preloadCard(1);
+
+    // Batch 2: Load cards 2-3 after 300ms (reduced from 500ms)
+    const batch2 = setTimeout(() => {
+      preloadCard(2);
+      preloadCard(3);
+    }, 300);
+
+    // Batch 3: Load cards 4-5 after 600ms (reduced from 1s)
+    const batch3 = setTimeout(() => {
+      preloadCard(4);
+      preloadCard(5);
+    }, 600);
+
+    return () => {
+      clearTimeout(batch2);
+      clearTimeout(batch3);
+    };
+  }, [data, address]);
+
+  // Preload next/prev cards when current card changes (backup for edge cases)
+  useEffect(() => {
+    if (!data) return;
+    // Preload adjacent cards
+    preloadCard(currentCard + 1);
+    preloadCard(currentCard - 1);
+  }, [currentCard, data, address]);
+
   const nextCard = () => {
     if (data && currentCard < data.highlights.length - 1) {
       const nextIdx = currentCard + 1;
+      setImageLoading(true);
       setCurrentCard(nextIdx);
-      setImageTimestamp(Date.now()); // Force image refresh
       revealCard(nextIdx);
     }
   };
 
   const prevCard = () => {
     if (currentCard > 0) {
+      setImageLoading(true);
       setCurrentCard(currentCard - 1);
-      setImageTimestamp(Date.now()); // Force image refresh
       // Previous cards should already be revealed, but ensure it
       revealCard(currentCard - 1);
     }
@@ -500,8 +594,8 @@ export default function HighlightsPage() {
 
   // Handle direct card selection
   const selectCard = (idx: number) => {
+    setImageLoading(true);
     setCurrentCard(idx);
-    setImageTimestamp(Date.now()); // Force image refresh
     revealCard(idx);
   };
 
@@ -516,23 +610,68 @@ export default function HighlightsPage() {
       const response = await fetch(imageUrl);
       const blob = await response.blob();
 
+      // Create a new blob with explicit PNG type (required for clipboard API)
+      const pngBlob = new Blob([blob], { type: 'image/png' });
+
+      // Try direct clipboard write first
       try {
         await navigator.clipboard.write([
-          new ClipboardItem({ 'image/png': blob })
+          new ClipboardItem({ 'image/png': pngBlob })
         ]);
         setCopyStatus('success');
         setTimeout(() => setCopyStatus('idle'), 2000);
-      } catch {
-        // Fallback: download the image if clipboard write fails
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `wrapped-${address.slice(0, 8)}-${currentCard + 1}.png`;
-        a.click();
-        URL.revokeObjectURL(url);
-        setCopyStatus('success');
-        setTimeout(() => setCopyStatus('idle'), 2000);
+        return;
+      } catch (clipboardError) {
+        console.log('Direct clipboard write failed, trying canvas approach:', clipboardError);
       }
+
+      // Canvas approach: load image, draw to canvas, get fresh blob
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(pngBlob);
+
+      await new Promise<void>((resolve, reject) => {
+        img.onload = async () => {
+          URL.revokeObjectURL(objectUrl);
+
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          ctx.drawImage(img, 0, 0);
+
+          canvas.toBlob(async (canvasBlob) => {
+            if (!canvasBlob) {
+              reject(new Error('Could not create blob from canvas'));
+              return;
+            }
+
+            try {
+              await navigator.clipboard.write([
+                new ClipboardItem({ 'image/png': canvasBlob })
+              ]);
+              setCopyStatus('success');
+              setTimeout(() => setCopyStatus('idle'), 2000);
+              resolve();
+            } catch (err) {
+              console.error('Canvas clipboard write also failed:', err);
+              reject(new Error('Clipboard write failed'));
+            }
+          }, 'image/png');
+        };
+
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error('Failed to load image'));
+        };
+
+        img.src = objectUrl;
+      });
     } catch (error) {
       console.error('Failed to copy image:', error);
       setCopyStatus('error');
@@ -540,41 +679,114 @@ export default function HighlightsPage() {
     }
   };
 
-  // Share card (opens share dialog or shares to X)
-  const shareCard = async () => {
-    if (!data) return;
+  // Share to X: Copy image to clipboard, then open X with pre-filled text
+  const [shareStatus, setShareStatus] = useState<'idle' | 'sharing' | 'success' | 'error'>('idle');
+  const [tokenCopied, setTokenCopied] = useState(false);
 
-    const highlight = data.highlights[currentCard];
-    const shareText = `My 2025 Solana Wrapped: ${highlight.title} - ${highlight.value}\n\nCheck your wallet at walletwrapped.xyz`;
+  // Token contract address - same as main page
+  const tokenContract = 'COMING_SOON';
 
-    // Check if native share is available
-    if (navigator.share) {
-      try {
-        // Fetch the pre-rendered PNG from the server
-        const imageUrl = `/api/card/${address}/${currentCard}`;
-        const response = await fetch(imageUrl);
-        const blob = await response.blob();
+  const copyTokenContract = async () => {
+    if (tokenContract === 'COMING_SOON') return;
 
-        const file = new File([blob], 'wrapped.png', { type: 'image/png' });
-
-        await navigator.share({
-          title: 'My 2025 Solana Wrapped',
-          text: shareText,
-          files: [file],
-        });
-      } catch {
-        // Fallback to X share
-        shareToX(shareText);
-      }
-    } else {
-      // Fallback to X share
-      shareToX(shareText);
+    try {
+      await navigator.clipboard.writeText(tokenContract);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy token address:', err);
     }
   };
 
-  const shareToX = (text: string) => {
-    const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`;
-    window.open(tweetUrl, '_blank', 'width=550,height=420');
+  const shareToX = async () => {
+    if (!data) return;
+
+    setShareStatus('sharing');
+
+    // Build combined summary of all highlights
+    const highlights = data.highlights;
+    // Remove decimal points from dollar values for cleaner tweet text
+    const summaryLines = highlights.map(h => {
+      let value = h.value;
+      if (value.includes('$')) {
+        value = value.replace(/(\$[\d,]+)\.\d+/, '$1');
+      }
+      return `${h.title}: ${value}`;
+    }).join('\n');
+    const shareText = `My 2025 Solana Wrapped:
+
+${summaryLines}
+
+Check your wallet at walletwrapped.xyz`;
+
+    try {
+      // Copy the summary card image to clipboard (all highlights in one)
+      const imageUrl = `/api/card/${address}/summary`;
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
+      const pngBlob = new Blob([blob], { type: 'image/png' });
+
+      let imageCopied = false;
+
+      // Try direct clipboard write
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': pngBlob })
+        ]);
+        imageCopied = true;
+      } catch {
+        // Try canvas approach as fallback
+        try {
+          const img = new Image();
+          const objectUrl = URL.createObjectURL(pngBlob);
+
+          await new Promise<void>((resolve, reject) => {
+            img.onload = async () => {
+              URL.revokeObjectURL(objectUrl);
+              const canvas = document.createElement('canvas');
+              canvas.width = img.width;
+              canvas.height = img.height;
+              const ctx = canvas.getContext('2d');
+              if (!ctx) { reject(new Error('No canvas context')); return; }
+              ctx.drawImage(img, 0, 0);
+
+              canvas.toBlob(async (canvasBlob) => {
+                if (!canvasBlob) { reject(new Error('No blob')); return; }
+                try {
+                  await navigator.clipboard.write([new ClipboardItem({ 'image/png': canvasBlob })]);
+                  imageCopied = true;
+                  resolve();
+                } catch { reject(new Error('Clipboard failed')); }
+              }, 'image/png');
+            };
+            img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error('Image load failed')); };
+            img.src = objectUrl;
+          });
+        } catch {
+          // Image copy failed, continue without it
+        }
+      }
+
+      // Open X with pre-filled tweet
+      const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`;
+      window.open(tweetUrl, '_blank', 'width=550,height=420');
+
+      // Only show success toast if image was copied
+      if (imageCopied) {
+        setShareStatus('success');
+        setTimeout(() => setShareStatus('idle'), 3000);
+      } else {
+        setShareStatus('idle');
+      }
+
+    } catch (error) {
+      console.error('Share to X failed:', error);
+      // Still open X even if clipboard failed
+      const fallbackText = `My 2025 Solana Wrapped:\n\n${highlights.map(h => `${h.title}: ${h.value}`).join('\n')}\n\nCheck your wallet at walletwrapped.xyz`;
+      const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(fallbackText)}`;
+      window.open(tweetUrl, '_blank', 'width=550,height=420');
+      setShareStatus('idle');
+    }
   };
 
   // Keyboard navigation
@@ -680,7 +892,17 @@ export default function HighlightsPage() {
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
-            Failed to copy - image downloaded instead
+            Failed to copy image
+          </div>
+        </div>
+      )}
+      {shareStatus === 'success' && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-slide-down">
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-black text-white font-medium shadow-lg border border-gray-700">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+            </svg>
+            Image copied! Paste (Cmd+V) in your tweet
           </div>
         </div>
       )}
@@ -705,7 +927,32 @@ export default function HighlightsPage() {
             <span className="text-white">Your </span>
             <span className="festive-gradient-text">2025 Wrapped</span>
           </h1>
-          <p className="text-gray-400 text-sm font-mono">{address.slice(0, 8)}...{address.slice(-8)}</p>
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-gray-400 text-sm">Powered by</span>
+            <span className="text-sm font-bold bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple bg-clip-text text-transparent">$WRAPPED</span>
+            <button
+              onClick={copyTokenContract}
+              disabled={tokenContract === 'COMING_SOON'}
+              className={`p-1 rounded transition-all duration-200 ${
+                tokenContract === 'COMING_SOON'
+                  ? 'text-gray-600 cursor-not-allowed'
+                  : tokenCopied
+                    ? 'text-green-400'
+                    : 'text-gray-400 hover:text-festive-gold'
+              }`}
+              title={tokenContract === 'COMING_SOON' ? 'Token address coming soon' : 'Copy token address'}
+            >
+              {tokenCopied ? (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Card Counter */}
@@ -714,39 +961,106 @@ export default function HighlightsPage() {
           <span className="text-gray-500"> / {data.highlights.length}</span>
         </div>
 
-        {/* PNL Card - Server-generated PNG */}
-        <div className="mb-4 relative">
-          <div ref={cardRef} style={{ width: '400px', height: '520px', margin: '0 auto' }}>
+        {/* PNL Card - Server-generated PNG with Navigation Arrows */}
+        <div className="mb-4 relative flex items-center justify-center gap-2">
+          {/* Left Arrow */}
+          <button
+            onClick={prevCard}
+            disabled={currentCard === 0}
+            className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
+              currentCard === 0
+                ? 'bg-dark-800/30 text-gray-600 cursor-not-allowed'
+                : 'bg-dark-800/80 hover:bg-dark-700 text-white hover:text-festive-gold border border-dark-600 hover:border-festive-gold/50'
+            }`}
+            aria-label="Previous card"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+
+          <div ref={cardRef} style={{ width: '400px', height: '520px', position: 'relative' }}>
+            {/* Loading skeleton */}
+            {imageLoading && (
+              <div
+                className="absolute inset-0 rounded-2xl overflow-hidden"
+                style={{
+                  background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #0a0a1a 100%)',
+                  border: '2px solid rgba(139, 92, 246, 0.3)',
+                }}
+              >
+                {/* Shimmer effect */}
+                <div
+                  className="absolute inset-0 -translate-x-full animate-shimmer"
+                  style={{
+                    background: 'linear-gradient(90deg, transparent, rgba(139, 92, 246, 0.1), transparent)',
+                  }}
+                />
+                <div className="flex flex-col items-center justify-center h-full gap-4">
+                  <div className="relative">
+                    <div className="w-14 h-14 border-2 border-festive-purple/20 rounded-full" />
+                    <div className="absolute inset-0 w-14 h-14 border-2 border-transparent border-t-festive-purple rounded-full animate-spin" />
+                    <div className="absolute inset-2 w-10 h-10 border-2 border-transparent border-b-festive-gold rounded-full animate-spin-reverse" />
+                  </div>
+                  <div className="text-gray-400 text-sm font-medium">Generating card...</div>
+                  <div className="text-gray-500 text-xs">This only takes a few seconds!</div>
+                  <div className="flex gap-1">
+                    <div className="w-2 h-2 bg-festive-purple/50 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-festive-purple/50 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-festive-purple/50 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            )}
             <img
-              key={`${currentCard}-${imageTimestamp}`}
-              src={`/api/card/${address}/${currentCard}?t=${imageTimestamp}`}
+              key={currentCard}
+              src={`/api/card/${address}/${currentCard}`}
               alt={`${highlight.title} card`}
               style={{
                 width: '400px',
                 height: '520px',
                 borderRadius: '16px',
                 display: 'block',
+                opacity: imageLoading ? 0 : 1,
+                transition: 'opacity 0.2s ease-in-out',
               }}
               draggable={false}
+              onLoad={() => setImageLoading(false)}
             />
+            {/* Sparkle effect on card reveal */}
+            {sparklingCard === currentCard && (
+              <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
+                {/* Corner bursts */}
+                <div className="absolute top-4 left-4 w-3 h-3 bg-festive-gold rounded-full animate-sparkle-1" />
+                <div className="absolute top-4 right-4 w-3 h-3 bg-festive-pink rounded-full animate-sparkle-2" />
+                <div className="absolute bottom-4 left-4 w-3 h-3 bg-festive-purple rounded-full animate-sparkle-3" />
+                <div className="absolute bottom-4 right-4 w-3 h-3 bg-festive-gold rounded-full animate-sparkle-4" />
+                {/* Edge sparkles */}
+                <div className="absolute top-1/2 left-4 w-2 h-2 bg-white rounded-full animate-sparkle-5" />
+                <div className="absolute top-1/2 right-4 w-2 h-2 bg-festive-pink rounded-full animate-sparkle-6" />
+                <div className="absolute top-1/4 left-1/2 w-2.5 h-2.5 bg-festive-gold rounded-full animate-sparkle-1" />
+                <div className="absolute bottom-1/4 left-1/2 w-2.5 h-2.5 bg-festive-purple rounded-full animate-sparkle-3" />
+                {/* Center glow pulse */}
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-festive-gold/50 rounded-full animate-ping" />
+              </div>
+            )}
           </div>
-          {/* Sparkle effect on card reveal - outside card ref to avoid capture */}
-          {sparklingCard === currentCard && (
-            <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
-              {/* Corner bursts */}
-              <div className="absolute top-4 left-4 w-3 h-3 bg-festive-gold rounded-full animate-sparkle-1" />
-              <div className="absolute top-4 right-4 w-3 h-3 bg-festive-pink rounded-full animate-sparkle-2" />
-              <div className="absolute bottom-4 left-4 w-3 h-3 bg-festive-purple rounded-full animate-sparkle-3" />
-              <div className="absolute bottom-4 right-4 w-3 h-3 bg-festive-gold rounded-full animate-sparkle-4" />
-              {/* Edge sparkles */}
-              <div className="absolute top-1/2 left-4 w-2 h-2 bg-white rounded-full animate-sparkle-5" />
-              <div className="absolute top-1/2 right-4 w-2 h-2 bg-festive-pink rounded-full animate-sparkle-6" />
-              <div className="absolute top-1/4 left-1/2 w-2.5 h-2.5 bg-festive-gold rounded-full animate-sparkle-1" />
-              <div className="absolute bottom-1/4 left-1/2 w-2.5 h-2.5 bg-festive-purple rounded-full animate-sparkle-3" />
-              {/* Center glow pulse */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-festive-gold/50 rounded-full animate-ping" />
-            </div>
-          )}
+
+          {/* Right Arrow */}
+          <button
+            onClick={nextCard}
+            disabled={!data || currentCard === data.highlights.length - 1}
+            className={`flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${
+              !data || currentCard === data.highlights.length - 1
+                ? 'bg-dark-800/30 text-gray-600 cursor-not-allowed'
+                : 'bg-dark-800/80 hover:bg-dark-700 text-white hover:text-festive-gold border border-dark-600 hover:border-festive-gold/50'
+            }`}
+            aria-label="Next card"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
         </div>
 
         {/* Card Action Buttons */}
@@ -793,15 +1107,46 @@ export default function HighlightsPage() {
               </>
             )}
           </button>
-          <button
-            onClick={shareCard}
-            className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-primary-500 to-accent-500 hover:from-primary-600 hover:to-accent-600 text-white font-medium transition-all duration-200 shadow-lg hover:shadow-primary-500/25"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-            </svg>
-            Share
-          </button>
+        </div>
+
+        {/* Share to X with Summary Preview */}
+        <div className="flex gap-4 mb-6 items-center p-4 rounded-xl bg-dark-800/50 border border-dark-600">
+          <div className="flex-1">
+            <div className="text-sm text-gray-400 mb-2">Share your complete 2025 summary</div>
+            <button
+              onClick={shareToX}
+              disabled={shareStatus === 'sharing'}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-black hover:bg-gray-900 border border-gray-700 text-white font-medium transition-all duration-200"
+            >
+              {shareStatus === 'sharing' ? (
+                <>
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Sharing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                  Share to X (image auto-copied)
+                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </>
+              )}
+            </button>
+          </div>
+          {/* Summary Card Thumbnail */}
+          <div className="relative flex-shrink-0" style={{ width: '80px', height: '100px' }}>
+            <img
+              src={`/api/card/${address}/summary`}
+              alt="Summary preview"
+              className="w-full h-full object-cover rounded-lg border border-primary-500/30"
+            />
+          </div>
         </div>
 
         {/* Navigation */}
@@ -893,12 +1238,6 @@ export default function HighlightsPage() {
 
         {/* Actions */}
         <div className="flex flex-col gap-3">
-          <button className="btn-primary w-full flex items-center justify-center gap-2">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M23.953 4.57a10 10 0 01-2.825.775 4.958 4.958 0 002.163-2.723c-.951.555-2.005.959-3.127 1.184a4.92 4.92 0 00-8.384 4.482C7.69 8.095 4.067 6.13 1.64 3.162a4.822 4.822 0 00-.666 2.475c0 1.71.87 3.213 2.188 4.096a4.904 4.904 0 01-2.228-.616v.06a4.923 4.923 0 003.946 4.827 4.996 4.996 0 01-2.212.085 4.936 4.936 0 004.604 3.417 9.867 9.867 0 01-6.102 2.105c-.39 0-.779-.023-1.17-.067a13.995 13.995 0 007.557 2.209c9.053 0 13.998-7.496 13.998-13.985 0-.21 0-.42-.015-.63A9.935 9.935 0 0024 4.59z"/>
-            </svg>
-            Share on X
-          </button>
           <Link href="/" className="btn-secondary w-full text-center">
             Analyze Another Wallet
           </Link>

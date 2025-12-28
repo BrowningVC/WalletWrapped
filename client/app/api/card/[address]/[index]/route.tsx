@@ -3,6 +3,73 @@ import { NextRequest } from 'next/server';
 
 export const runtime = 'edge';
 
+// Cache fonts at module level (persists across requests in edge runtime)
+let cachedInterFont: ArrayBuffer | null = null;
+let cachedInterBold: ArrayBuffer | null = null;
+let fontLoadPromise: Promise<void> | null = null;
+
+// Cache highlights data to avoid redundant API calls (edge runtime module-level cache)
+// Key: walletAddress, Value: { data, timestamp }
+const highlightsCache = new Map<string, { data: any; timestamp: number }>();
+const HIGHLIGHTS_CACHE_TTL = 60 * 1000; // 60 seconds (highlights don't change often)
+
+// Cache token images to avoid redundant fetches
+// Key: tokenMint, Value: { imageUrl: string | null, timestamp: number }
+const tokenImageCache = new Map<string, { imageUrl: string | null; timestamp: number }>();
+const TOKEN_IMAGE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours (token images rarely change)
+
+// Fetch token image URL - try DexScreener first (best for meme tokens), fallback to Jupiter
+async function getTokenImageUrl(tokenMint: string): Promise<string | null> {
+  if (!tokenMint) return null;
+
+  const now = Date.now();
+  const cached = tokenImageCache.get(tokenMint);
+
+  // Return cached result if valid
+  if (cached && (now - cached.timestamp) < TOKEN_IMAGE_CACHE_TTL) {
+    return cached.imageUrl;
+  }
+
+  try {
+    // Try DexScreener first - excellent coverage for Solana tokens including meme coins
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout - fail fast
+
+    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, {
+      signal: controller.signal,
+      headers: { 'Accept': 'application/json' },
+    });
+    clearTimeout(timeoutId);
+
+    if (response.ok) {
+      const data = await response.json();
+      // DexScreener returns pairs array, get image from first pair's baseToken or quoteToken
+      const pair = data.pairs?.[0];
+      const imageUrl = pair?.info?.imageUrl || pair?.baseToken?.logoURI || null;
+
+      if (imageUrl) {
+        tokenImageCache.set(tokenMint, { imageUrl, timestamp: now });
+        return imageUrl;
+      }
+    }
+
+    // Cache null result to avoid retrying
+    tokenImageCache.set(tokenMint, { imageUrl: null, timestamp: now });
+
+    // Limit cache size
+    if (tokenImageCache.size > 200) {
+      const oldestKey = tokenImageCache.keys().next().value;
+      if (oldestKey) tokenImageCache.delete(oldestKey);
+    }
+
+    return null;
+  } catch {
+    // On any error, cache null to avoid retrying immediately
+    tokenImageCache.set(tokenMint, { imageUrl: null, timestamp: now });
+    return null;
+  }
+}
+
 // Fetch fonts from Google Fonts
 async function getFont(font: string, weight: number): Promise<ArrayBuffer | null> {
   try {
@@ -26,6 +93,86 @@ async function getFont(font: string, weight: number): Promise<ArrayBuffer | null
   } catch {
     return null;
   }
+}
+
+// Load and cache fonts once
+async function loadFonts() {
+  if (cachedInterFont && cachedInterBold) return;
+  if (fontLoadPromise) {
+    await fontLoadPromise;
+    return;
+  }
+
+  fontLoadPromise = (async () => {
+    const [font, bold] = await Promise.all([
+      getFont('Inter', 400),
+      getFont('Inter', 700),
+    ]);
+    cachedInterFont = font;
+    cachedInterBold = bold;
+  })();
+
+  await fontLoadPromise;
+}
+
+// Proactively clean expired entries from cache
+function cleanExpiredCache() {
+  const now = Date.now();
+  for (const [key, value] of highlightsCache.entries()) {
+    if (now - value.timestamp > HIGHLIGHTS_CACHE_TTL) {
+      highlightsCache.delete(key);
+    }
+  }
+}
+
+// Fetch highlights with caching to avoid redundant API calls for same wallet
+async function getHighlights(address: string, apiUrl: string): Promise<any[]> {
+  const now = Date.now();
+  const cached = highlightsCache.get(address);
+
+  if (cached && (now - cached.timestamp) < HIGHLIGHTS_CACHE_TTL) {
+    return cached.data;
+  }
+
+  // Clean expired entries before adding new one
+  if (highlightsCache.size > 25) {
+    cleanExpiredCache();
+  }
+
+  // Add timeout to prevent hanging requests
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}/api/wallet/${address}/highlights`, {
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timeout: highlights API took too long');
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Failed to fetch highlights: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  highlightsCache.set(address, { data, timestamp: now });
+
+  // Hard limit: remove oldest if still over 50 entries
+  if (highlightsCache.size > 50) {
+    const oldestKey = highlightsCache.keys().next().value;
+    if (oldestKey) highlightsCache.delete(oldestKey);
+  }
+
+  return data;
 }
 
 // Firework theme colors
@@ -55,24 +202,37 @@ export async function GET(
     const { address, index } = await params;
     const cardIndex = parseInt(index, 10);
 
-    // Fetch highlight data and fonts in parallel
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
-    console.log(`[Card API] Fetching highlights from: ${apiUrl}/api/wallet/${address}/highlights`);
 
-    const [response, interFont, interBold] = await Promise.all([
-      fetch(`${apiUrl}/api/wallet/${address}/highlights`),
-      getFont('Inter', 400),
-      getFont('Inter', 700),
-    ]);
+    // Try to get pre-generated card from server cache first (instant!)
+    try {
+      const cacheResponse = await fetch(`${apiUrl}/api/wallet/${address}/card/${index}`, {
+        cache: 'no-store',
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Card API] Highlights fetch failed:`, response.status, errorText);
-      throw new Error(`Failed to fetch highlights: ${response.status} ${errorText}`);
+      if (cacheResponse.ok) {
+        // Return cached image directly
+        const imageBuffer = await cacheResponse.arrayBuffer();
+        return new Response(imageBuffer, {
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=86400',
+          },
+        });
+      }
+      // Cache miss (404) - fall through to generate
+    } catch {
+      // Server cache unavailable - fall through to generate
     }
 
-    const highlights = await response.json();
-    console.log(`[Card API] Got ${highlights.length} highlights, requesting index ${cardIndex}`);
+    // Load fonts (cached after first request) and fetch highlight data in parallel
+    // Both are cached, so subsequent requests for same wallet are very fast
+    const [, highlights] = await Promise.all([
+      loadFonts(),
+      getHighlights(address, apiUrl),
+    ]);
+
+    console.log(`[Card API] Cache miss, generating card ${cardIndex} for ${address}`);
 
     const highlight = highlights[cardIndex];
 
@@ -94,29 +254,57 @@ export async function GET(
     const subtitle = highlight.metadata.formattedSecondary || highlight.valueSecondary;
     const title = highlight.title;
     const context = highlight.description;
-    const type = highlight.type === 'overall_pnl' ? '2025 WRAPPED' : highlight.type.replace(/_/g, ' ').toUpperCase();
+    const type = '2025 WRAPPED';
+    const highlightType = highlight.type;
+    const tokenSymbol = highlight.metadata?.tokenSymbol;
+    const tokenMint = highlight.metadata?.tokenMint;
+
+    // Determine if this card should show a prominent ticker/date
+    const showProminentTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlightType) && tokenSymbol;
+
+    // Fetch token image if we're showing a prominent ticker (non-blocking, with fallback)
+    let tokenImageUrl: string | null = null;
+    if (showProminentTicker && tokenMint) {
+      tokenImageUrl = await getTokenImageUrl(tokenMint);
+    }
+    const showProminentDate = highlightType === 'best_day' || highlightType === 'best_profit_day';
 
     // Calculate font size based on value length (ensure it fits in 344px width)
     // Container width: 400px - 56px padding = 344px usable width
     const getValueFontSize = (len: number) => {
-      if (len > 18) return 38;   // Very long values
-      if (len > 15) return 44;   // Long values
-      if (len > 13) return 50;   // Medium-long values like "+$12,909.9"
-      if (len > 11) return 56;   // Medium values
-      if (len > 9) return 64;    // Short-medium values
-      if (len > 7) return 72;    // Short values
-      if (len > 5) return 80;    // Very short values
+      if (len > 16) return 32;   // Very long values like "-$1,234,567.89"
+      if (len > 14) return 38;   // Long values like "+$352,898.12"
+      if (len > 12) return 44;   // Medium-long values like "+$352,898"
+      if (len > 10) return 52;   // Medium values like "+$52,898"
+      if (len > 8) return 60;    // Short-medium values
+      if (len > 6) return 70;    // Short values
+      if (len > 4) return 80;    // Very short values
       return 88;                  // Tiny values
     };
 
     const valueFontSize = getValueFontSize(value.length);
 
+    // Determine value color based on positive/negative (green for +, red for -)
+    // This is independent of the card's overall color scheme
+    const isPositiveValue = typeof value === 'string' && (value.startsWith('+') || (!value.startsWith('-') && value.includes('$')));
+    const isNegativeValue = typeof value === 'string' && value.startsWith('-');
+    const valueColor = isPositiveValue ? '#22c55e' : isNegativeValue ? '#ef4444' : colors.text;
+
+    // Generate at 2x resolution for HD/Retina displays
+    // All dimensions doubled for crisp rendering
+    const scale = 2;
+    const width = 400 * scale;  // 800px
+    const height = 520 * scale; // 1040px
+
+    // Helper to scale values
+    const s = (v: number) => v * scale;
+
     const imageResponse = new ImageResponse(
       (
         <div
           style={{
-            width: '400px',
-            height: '520px',
+            width: `${width}px`,
+            height: `${height}px`,
             display: 'flex',
             flexDirection: 'column',
             background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #0a0a1a 100%)',
@@ -129,10 +317,10 @@ export async function GET(
           <div
             style={{
               position: 'absolute',
-              top: '-100px',
-              right: '-100px',
-              width: '300px',
-              height: '300px',
+              top: `${s(-100)}px`,
+              right: `${s(-100)}px`,
+              width: `${s(300)}px`,
+              height: `${s(300)}px`,
               background: `radial-gradient(circle, ${colors.text}25 0%, ${colors.text}10 40%, transparent 70%)`,
               borderRadius: '50%',
               display: 'flex',
@@ -141,10 +329,10 @@ export async function GET(
           <div
             style={{
               position: 'absolute',
-              bottom: '-120px',
-              left: '-120px',
-              width: '350px',
-              height: '350px',
+              bottom: `${s(-120)}px`,
+              left: `${s(-120)}px`,
+              width: `${s(350)}px`,
+              height: `${s(350)}px`,
               background: 'radial-gradient(circle, #a855f720 0%, #a855f710 40%, transparent 70%)',
               borderRadius: '50%',
               display: 'flex',
@@ -152,19 +340,19 @@ export async function GET(
           />
 
           {/* Sparkle particles */}
-          <div style={{ position: 'absolute', top: '80px', right: '60px', width: '8px', height: '8px', background: '#ffd700', borderRadius: '50%', opacity: 0.6, display: 'flex' }} />
-          <div style={{ position: 'absolute', top: '140px', right: '120px', width: '6px', height: '6px', background: '#ff6b9d', borderRadius: '50%', opacity: 0.5, display: 'flex' }} />
-          <div style={{ position: 'absolute', top: '200px', left: '40px', width: '7px', height: '7px', background: colors.text, borderRadius: '50%', opacity: 0.4, display: 'flex' }} />
-          <div style={{ position: 'absolute', bottom: '180px', left: '80px', width: '5px', height: '5px', background: '#00f5d4', borderRadius: '50%', opacity: 0.5, display: 'flex' }} />
-          <div style={{ position: 'absolute', bottom: '120px', right: '90px', width: '6px', height: '6px', background: '#9d4edd', borderRadius: '50%', opacity: 0.6, display: 'flex' }} />
+          <div style={{ position: 'absolute', top: `${s(80)}px`, right: `${s(60)}px`, width: `${s(8)}px`, height: `${s(8)}px`, background: '#ffd700', borderRadius: '50%', opacity: 0.6, display: 'flex' }} />
+          <div style={{ position: 'absolute', top: `${s(140)}px`, right: `${s(120)}px`, width: `${s(6)}px`, height: `${s(6)}px`, background: '#ff6b9d', borderRadius: '50%', opacity: 0.5, display: 'flex' }} />
+          <div style={{ position: 'absolute', top: `${s(200)}px`, left: `${s(40)}px`, width: `${s(7)}px`, height: `${s(7)}px`, background: colors.text, borderRadius: '50%', opacity: 0.4, display: 'flex' }} />
+          <div style={{ position: 'absolute', bottom: `${s(180)}px`, left: `${s(80)}px`, width: `${s(5)}px`, height: `${s(5)}px`, background: '#00f5d4', borderRadius: '50%', opacity: 0.5, display: 'flex' }} />
+          <div style={{ position: 'absolute', bottom: `${s(120)}px`, right: `${s(90)}px`, width: `${s(6)}px`, height: `${s(6)}px`, background: '#9d4edd', borderRadius: '50%', opacity: 0.6, display: 'flex' }} />
 
           {/* Grid pattern */}
           <div
             style={{
               position: 'absolute',
               inset: '0',
-              backgroundImage: `linear-gradient(${colors.text}08 1px, transparent 1px), linear-gradient(90deg, ${colors.text}08 1px, transparent 1px)`,
-              backgroundSize: '40px 40px',
+              backgroundImage: `linear-gradient(${colors.text}08 ${s(1)}px, transparent ${s(1)}px), linear-gradient(90deg, ${colors.text}08 ${s(1)}px, transparent ${s(1)}px)`,
+              backgroundSize: `${s(40)}px ${s(40)}px`,
               display: 'flex',
             }}
           />
@@ -175,10 +363,10 @@ export async function GET(
               position: 'relative',
               width: '100%',
               height: '100%',
-              border: `2px solid ${colors.border}`,
-              borderRadius: '16px',
-              boxShadow: `0 8px 32px ${colors.glow}, inset 0 0 80px ${colors.glow.replace('0.15', '0.03')}`,
-              padding: '28px',
+              border: `${s(2)}px solid ${colors.border}`,
+              borderRadius: `${s(16)}px`,
+              boxShadow: `0 ${s(8)}px ${s(32)}px ${colors.glow}, inset 0 0 ${s(80)}px ${colors.glow.replace('0.15', '0.03')}`,
+              padding: `${s(28)}px`,
               display: 'flex',
               flexDirection: 'column',
             }}
@@ -187,29 +375,29 @@ export async function GET(
             <div
               style={{
                 position: 'absolute',
-                top: '12px',
-                right: '12px',
-                width: '50px',
-                height: '50px',
-                borderTop: `3px solid ${colors.text}60`,
-                borderRight: `3px solid ${colors.text}60`,
-                borderRadius: '0 14px 0 0',
+                top: `${s(12)}px`,
+                right: `${s(12)}px`,
+                width: `${s(50)}px`,
+                height: `${s(50)}px`,
+                borderTop: `${s(3)}px solid ${colors.text}60`,
+                borderRight: `${s(3)}px solid ${colors.text}60`,
+                borderRadius: `0 ${s(14)}px 0 0`,
                 display: 'flex',
-                boxShadow: `0 0 15px ${colors.text}30`,
+                boxShadow: `0 0 ${s(15)}px ${colors.text}30`,
               }}
             />
             <div
               style={{
                 position: 'absolute',
-                bottom: '12px',
-                left: '12px',
-                width: '50px',
-                height: '50px',
-                borderBottom: `3px solid ${colors.text}50`,
-                borderLeft: `3px solid ${colors.text}50`,
-                borderRadius: '0 0 0 14px',
+                bottom: `${s(12)}px`,
+                left: `${s(12)}px`,
+                width: `${s(50)}px`,
+                height: `${s(50)}px`,
+                borderBottom: `${s(3)}px solid ${colors.text}50`,
+                borderLeft: `${s(3)}px solid ${colors.text}50`,
+                borderRadius: `0 0 0 ${s(14)}px`,
                 display: 'flex',
-                boxShadow: `0 0 15px ${colors.text}25`,
+                boxShadow: `0 0 ${s(15)}px ${colors.text}25`,
               }}
             />
 
@@ -219,7 +407,7 @@ export async function GET(
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'flex-start',
-                marginBottom: '24px',
+                marginBottom: `${s(24)}px`,
               }}
             >
               <div
@@ -231,11 +419,11 @@ export async function GET(
                 <div
                   style={{
                     display: 'flex',
-                    fontSize: '11px',
+                    fontSize: `${s(11)}px`,
                     color: colors.text,
                     textTransform: 'uppercase',
                     letterSpacing: '0.1em',
-                    marginBottom: '6px',
+                    marginBottom: `${s(6)}px`,
                     fontWeight: '600',
                     opacity: 0.8,
                   }}
@@ -245,7 +433,7 @@ export async function GET(
                 <div
                   style={{
                     display: 'flex',
-                    fontSize: '28px',
+                    fontSize: `${s(28)}px`,
                     fontWeight: '700',
                     background: 'linear-gradient(135deg, #ffffff 0%, #e5e5e5 100%)',
                     backgroundClip: 'text',
@@ -266,7 +454,7 @@ export async function GET(
               >
                 <div
                   style={{
-                    fontSize: '24px',
+                    fontSize: `${s(24)}px`,
                     fontWeight: '900',
                     background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)',
                     backgroundClip: 'text',
@@ -279,11 +467,11 @@ export async function GET(
                 </div>
                 <div
                   style={{
-                    fontSize: '9px',
+                    fontSize: `${s(9)}px`,
                     color: '#a855f7',
                     textTransform: 'uppercase',
                     letterSpacing: '0.08em',
-                    marginTop: '4px',
+                    marginTop: `${s(4)}px`,
                     display: 'flex',
                   }}
                 >
@@ -291,6 +479,114 @@ export async function GET(
                 </div>
               </div>
             </div>
+
+            {/* Prominent Ticker/Date Display */}
+            {showProminentTicker && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: `${s(10)}px`,
+                  marginBottom: `${s(16)}px`,
+                  padding: `${s(12)}px ${s(16)}px`,
+                  background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                  borderRadius: `${s(12)}px`,
+                  border: `${s(1)}px solid ${colors.text}30`,
+                }}
+              >
+                {tokenImageUrl ? (
+                  // Show token image if available
+                  <img
+                    src={tokenImageUrl}
+                    alt={tokenSymbol || ''}
+                    width={s(40)}
+                    height={s(40)}
+                    style={{
+                      width: `${s(40)}px`,
+                      height: `${s(40)}px`,
+                      borderRadius: '50%',
+                      objectFit: 'cover',
+                      border: `${s(2)}px solid ${colors.text}50`,
+                    }}
+                  />
+                ) : (
+                  // Fallback to letter badge
+                  <div
+                    style={{
+                      width: `${s(40)}px`,
+                      height: `${s(40)}px`,
+                      borderRadius: '50%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: `${s(18)}px`,
+                      fontWeight: 'bold',
+                      background: `linear-gradient(135deg, ${colors.text} 0%, ${colors.text}80 100%)`,
+                      color: '#0a0a1a',
+                    }}
+                  >
+                    {tokenSymbol?.charAt(0) || '?'}
+                  </div>
+                )}
+                <div
+                  style={{
+                    display: 'flex',
+                    fontSize: `${s(28)}px`,
+                    fontWeight: '800',
+                    color: colors.text,
+                    letterSpacing: '-0.02em',
+                    textShadow: `0 0 ${s(30)}px ${colors.text}40`,
+                  }}
+                >
+                  ${tokenSymbol}
+                </div>
+              </div>
+            )}
+            {showProminentDate && subtitle && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: `${s(10)}px`,
+                  marginBottom: `${s(16)}px`,
+                  padding: `${s(12)}px ${s(16)}px`,
+                  background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                  borderRadius: `${s(12)}px`,
+                  border: `${s(1)}px solid ${colors.text}30`,
+                }}
+              >
+                <div
+                  style={{
+                    width: `${s(40)}px`,
+                    height: `${s(40)}px`,
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: `${s(16)}px`,
+                    fontWeight: 'bold',
+                    background: `linear-gradient(135deg, ${colors.text} 0%, ${colors.text}80 100%)`,
+                    color: '#0a0a1a',
+                  }}
+                >
+                  <svg width={s(20)} height={s(20)} viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/>
+                  </svg>
+                </div>
+                <div
+                  style={{
+                    display: 'flex',
+                    fontSize: `${s(24)}px`,
+                    fontWeight: '800',
+                    color: colors.text,
+                    letterSpacing: '-0.02em',
+                    textShadow: `0 0 ${s(30)}px ${colors.text}40`,
+                  }}
+                >
+                  {subtitle}
+                </div>
+              </div>
+            )}
 
             {/* Main value section */}
             <div
@@ -307,13 +603,13 @@ export async function GET(
               <div
                 style={{
                   position: 'absolute',
-                  left: '-28px',
+                  left: `${s(-28)}px`,
                   top: '50%',
                   transform: 'translateY(-50%)',
-                  width: '4px',
-                  height: '80px',
+                  width: `${s(4)}px`,
+                  height: `${s(80)}px`,
                   background: `linear-gradient(180deg, transparent 0%, ${colors.text} 50%, transparent 100%)`,
-                  borderRadius: '2px',
+                  borderRadius: `${s(2)}px`,
                   display: 'flex',
                 }}
               />
@@ -321,17 +617,17 @@ export async function GET(
               <div
                 style={{
                   display: 'flex',
-                  fontSize: `${valueFontSize}px`,
+                  fontSize: `${s(valueFontSize)}px`,
                   fontWeight: 900,
-                  color: colors.text,
+                  color: valueColor,
                   lineHeight: 0.9,
-                  textShadow: `0 0 60px ${colors.text}50, 0 0 30px ${colors.text}30, 0 2px 4px rgba(0,0,0,0.5)`,
+                  textShadow: `0 0 ${s(60)}px ${valueColor}50, 0 0 ${s(30)}px ${valueColor}30, 0 ${s(2)}px ${s(4)}px rgba(0,0,0,0.5)`,
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'clip',
                   fontFamily: 'Inter',
                   letterSpacing: '-0.06em',
-                  maxWidth: '340px',
+                  maxWidth: `${s(340)}px`,
                   filter: 'brightness(1.1)',
                 }}
               >
@@ -340,14 +636,14 @@ export async function GET(
               <div
                 style={{
                   display: 'flex',
-                  fontSize: '22px',
+                  fontSize: `${s(22)}px`,
                   color: colors.text,
-                  marginTop: '16px',
+                  marginTop: `${s(16)}px`,
                   fontWeight: 600,
                   fontStyle: 'italic',
                   opacity: 0.9,
                   letterSpacing: '0.01em',
-                  textShadow: `0 0 20px ${colors.text}25`,
+                  textShadow: `0 0 ${s(20)}px ${colors.text}25`,
                 }}
               >
                 {subtitle}
@@ -366,25 +662,29 @@ export async function GET(
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  marginBottom: '18px',
+                  marginBottom: `${s(18)}px`,
                 }}
               >
                 <div
                   style={{
-                    width: '60px',
-                    height: '2px',
+                    width: `${s(60)}px`,
+                    height: `${s(2)}px`,
                     background: `linear-gradient(90deg, ${colors.text} 0%, transparent 100%)`,
-                    marginBottom: '10px',
+                    marginBottom: `${s(10)}px`,
                     display: 'flex',
                   }}
                 />
                 <div
                   style={{
                     display: 'flex',
-                    fontSize: '15px',
-                    color: 'rgba(209, 213, 217, 0.75)',
+                    fontSize: `${s(18)}px`,
+                    background: `linear-gradient(135deg, #ffffff 0%, ${colors.text} 50%, #a855f7 100%)`,
+                    backgroundClip: 'text',
+                    color: 'transparent',
                     lineHeight: 1.5,
                     letterSpacing: '-0.01em',
+                    fontWeight: 600,
+                    textShadow: `0 0 ${s(30)}px ${colors.text}20`,
                   }}
                 >
                   {context}
@@ -395,51 +695,25 @@ export async function GET(
               <div
                 style={{
                   display: 'flex',
-                  justifyContent: 'space-between',
+                  justifyContent: 'flex-end',
                   alignItems: 'center',
-                  paddingTop: '14px',
-                  borderTop: `1px solid ${colors.border.replace('0.4', '0.25')}`,
+                  paddingTop: `${s(14)}px`,
+                  borderTop: `${s(1)}px solid ${colors.border.replace('0.4', '0.25')}`,
                 }}
               >
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '6px',
+                    gap: `${s(5)}px`,
                   }}
                 >
-                  <div
-                    style={{
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
-                      background: colors.text,
-                      opacity: 0.5,
-                      display: 'flex',
-                    }}
-                  />
-                  <div
-                    style={{
-                      display: 'flex',
-                      fontSize: '11px',
-                      fontFamily: 'monospace',
-                      color: '#9ca3af',
-                      letterSpacing: '0.02em',
-                    }}
-                  >
-                    {address.slice(0, 4)}...{address.slice(-4)}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '5px',
-                  }}
-                >
-                  <span style={{ display: 'flex', fontSize: '10px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>powered by</span>
-                  <span style={{ display: 'flex', fontSize: '13px', fontWeight: 'bold', background: 'linear-gradient(135deg, #a855f7 0%, #6366f1 100%)', backgroundClip: 'text', color: 'transparent' }}>
+                  <span style={{ display: 'flex', fontSize: `${s(10)}px`, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' }}>powered by</span>
+                  <span style={{ display: 'flex', fontSize: `${s(13)}px`, fontWeight: 'bold', background: 'linear-gradient(90deg, #ffd700 0%, #ff6b9d 50%, #9d4edd 100%)', backgroundClip: 'text', color: 'transparent' }}>
                     $WRAPPED
+                  </span>
+                  <span style={{ display: 'flex', fontSize: `${s(10)}px`, color: '#9ca3af', marginLeft: `${s(4)}px` }}>
+                    walletwrapped.io
                   </span>
                 </div>
               </div>
@@ -448,18 +722,18 @@ export async function GET(
         </div>
       ),
       {
-        width: 400,
-        height: 520,
+        width,  // 800px for HD
+        height, // 1040px for HD
         fonts: [
-          interFont && {
+          cachedInterFont && {
             name: 'Inter',
-            data: interFont,
+            data: cachedInterFont,
             weight: 400,
             style: 'normal',
           },
-          interBold && {
+          cachedInterBold && {
             name: 'Inter',
-            data: interBold,
+            data: cachedInterBold,
             weight: 700,
             style: 'normal',
           },
@@ -475,21 +749,21 @@ export async function GET(
   } catch (error) {
     console.error('[Card API] Failed to generate card image:', error);
 
-    // Return an error image
+    // Return an error image at 2x resolution
     return new ImageResponse(
       (
         <div
           style={{
-            width: '400px',
-            height: '520px',
+            width: '800px',
+            height: '1040px',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0d0d1a 100%)',
-            border: '2px solid rgba(239, 68, 68, 0.4)',
-            borderRadius: '16px',
-            padding: '24px',
+            border: '4px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '32px',
+            padding: '48px',
             textAlign: 'center',
             fontFamily: 'Inter',
           }}
@@ -498,20 +772,20 @@ export async function GET(
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: '16px',
+            gap: '32px',
           }}>
-            <div style={{ fontSize: '24px', fontWeight: '700', color: '#ef4444', letterSpacing: '-0.02em' }}>
+            <div style={{ fontSize: '48px', fontWeight: '700', color: '#ef4444', letterSpacing: '-0.02em' }}>
               Failed to Load Card
             </div>
-            <div style={{ fontSize: '14px', color: '#9ca3af', maxWidth: '300px' }}>
+            <div style={{ fontSize: '28px', color: '#9ca3af', maxWidth: '600px' }}>
               {error instanceof Error ? error.message : 'Unknown error'}
             </div>
           </div>
         </div>
       ),
       {
-        width: 400,
-        height: 520,
+        width: 800,
+        height: 1040,
       }
     );
   }

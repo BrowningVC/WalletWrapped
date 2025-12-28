@@ -50,14 +50,26 @@ class WalletAnalyzer {
       }
 
       const totalTx = rawTransactions.length;
-      progressCallback(40, `Parsing ${totalTx.toLocaleString()} transactions...`, { fetched: totalTx, total: totalTx, processed: 0 });
 
-      // Step 2: Parse and normalize transactions (40-50%)
+      // Step 2a: Pre-fetch all token metadata in batch (much faster than individual calls)
+      // This populates the cache so parseTransaction doesn't need to make API calls
+      progressCallback(40, `Pre-fetching token metadata...`, { fetched: totalTx, total: totalTx, processed: 0 });
+      const uniqueMints = HeliusService.extractUniqueMints(rawTransactions);
+      console.log(`Found ${uniqueMints.length} unique token mints to fetch metadata for`);
+
+      await HeliusService.batchFetchTokenMetadata(uniqueMints, (percent, message) => {
+        const progress = 40 + (percent * 5); // 40-45% for metadata
+        progressCallback(progress, message, { fetched: totalTx, total: totalTx, processed: 0 });
+      });
+
+      progressCallback(45, `Parsing ${totalTx.toLocaleString()} transactions...`, { fetched: totalTx, total: totalTx, processed: 0 });
+
+      // Step 2b: Parse and normalize transactions (45-50%)
       const normalizedTransactions = await this.parseTransactionsStream(
         rawTransactions,
         walletAddress,
         (processed, total) => {
-          const progress = 40 + (processed / total) * 10;
+          const progress = 45 + (processed / total) * 5;
           progressCallback(
             progress,
             `Parsing transactions: ${processed.toLocaleString()} / ${total.toLocaleString()}`,

@@ -34,6 +34,9 @@ async function attachCSRFToken(req, res, next) {
     // Attach to response header for client to read
     res.setHeader('X-CSRF-Token', token);
 
+    // Also attach to res.locals for route handler to include in body
+    res.locals.csrfToken = token;
+
     next();
   } catch (error) {
     console.error('CSRF token generation error:', error);

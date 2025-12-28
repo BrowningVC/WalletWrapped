@@ -10,7 +10,7 @@ const requiredEnvVars = [
   { name: 'POSTGRES_PORT', description: 'PostgreSQL port', type: 'number' },
   { name: 'POSTGRES_DB', description: 'PostgreSQL database name' },
   { name: 'POSTGRES_USER', description: 'PostgreSQL username' },
-  { name: 'POSTGRES_PASSWORD', description: 'PostgreSQL password' },
+  { name: 'POSTGRES_PASSWORD', description: 'PostgreSQL password', allowEmpty: true },
 
   // Redis
   { name: 'REDIS_HOST', description: 'Redis host' },
@@ -44,7 +44,7 @@ function validateEnv() {
   for (const envVar of requiredEnvVars) {
     const value = process.env[envVar.name];
 
-    if (!value && !envVar.default) {
+    if (!value && !envVar.default && !envVar.allowEmpty) {
       errors.push(`Missing required environment variable: ${envVar.name} (${envVar.description})`);
       continue;
     }
@@ -63,8 +63,8 @@ function validateEnv() {
       }
     }
 
-    if (value || envVar.default) {
-      console.log(`✓ ${envVar.name}: ${value ? '***' : `${envVar.default} (default)`}`);
+    if (value || envVar.default || envVar.allowEmpty) {
+      console.log(`✓ ${envVar.name}: ${value ? '***' : envVar.default ? `${envVar.default} (default)` : '(empty)'}`);
     }
   }
 

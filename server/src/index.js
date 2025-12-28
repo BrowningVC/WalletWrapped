@@ -85,11 +85,11 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resources
 }));
 
-// CORS
+// CORS - must specify explicit origins when using credentials
 app.use(cors({
   origin: NODE_ENV === 'production'
     ? [CLIENT_URL, 'https://walletwrapped.com', 'https://www.walletwrapped.com']
-    : '*',
+    : ['http://localhost:3000', 'http://127.0.0.1:3000', CLIENT_URL],
   credentials: true
 }));
 
@@ -170,7 +170,7 @@ app.get('/health', async (req, res) => {
 // CSRF token endpoint - provides token for state-changing requests
 app.get('/api/csrf-token', attachCSRFToken, (req, res) => {
   res.json({
-    message: 'CSRF token attached to X-CSRF-Token header',
+    csrfToken: res.locals.csrfToken,
     expiresIn: 3600 // seconds
   });
 });

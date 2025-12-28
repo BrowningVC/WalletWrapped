@@ -86,6 +86,18 @@ const redisHelpers = {
   // Get sorted set members
   async zrange(key, start, stop) {
     return await redis.zRange(key, start, stop);
+  },
+
+  // Store binary data (e.g., PNG images) as base64
+  async setBinary(key, seconds, buffer) {
+    const base64 = buffer.toString('base64');
+    return await redis.setEx(key, seconds, base64);
+  },
+
+  // Get binary data (returns Buffer)
+  async getBinary(key) {
+    const base64 = await redis.get(key);
+    return base64 ? Buffer.from(base64, 'base64') : null;
   }
 };
 

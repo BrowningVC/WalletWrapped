@@ -218,9 +218,19 @@ export default function AnalyzePage() {
       setCurrentStep(6);
       setStatusMessage('Analysis complete! Redirecting...');
 
+      // Prefetch the highlights page for instant navigation
+      router.prefetch(`/highlights/${address}`);
+
+      // Start preloading the first card image immediately
+      // This warms up the edge cache so the image is ready when the user arrives
+      const img = new Image();
+      img.src = `/api/card/${address}/0`;
+
+      // Redirect after a brief moment to show completion state
+      // The card image will continue loading in background
       setTimeout(() => {
         router.push(`/highlights/${address}`);
-      }, 1500);
+      }, 300);
     });
 
     newSocket.on('error', (data) => {
@@ -246,9 +256,28 @@ export default function AnalyzePage() {
   const startAnalysis = async () => {
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+
+      // First, fetch CSRF token
+      const csrfResponse = await fetch(`${apiUrl}/api/csrf-token`, {
+        method: 'GET',
+        credentials: 'include',
+      });
+
+      if (!csrfResponse.ok) {
+        throw new Error('Failed to get CSRF token');
+      }
+
+      const csrfData = await csrfResponse.json();
+      const csrfToken = csrfData.csrfToken;
+
+      // Now make the analyze request with CSRF token
       const response = await fetch(`${apiUrl}/api/analyze`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': csrfToken,
+        },
+        credentials: 'include',
         body: JSON.stringify({ walletAddress: address }),
       });
 
