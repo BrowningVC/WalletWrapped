@@ -13,63 +13,6 @@ let fontLoadPromise: Promise<void> | null = null;
 const highlightsCache = new Map<string, { data: any; timestamp: number }>();
 const HIGHLIGHTS_CACHE_TTL = 60 * 1000; // 60 seconds (highlights don't change often)
 
-// Cache token images to avoid redundant fetches
-// Key: tokenMint, Value: { imageUrl: string | null, timestamp: number }
-const tokenImageCache = new Map<string, { imageUrl: string | null; timestamp: number }>();
-const TOKEN_IMAGE_CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours (token images rarely change)
-
-// Fetch token image URL - try DexScreener first (best for meme tokens), fallback to Jupiter
-async function getTokenImageUrl(tokenMint: string): Promise<string | null> {
-  if (!tokenMint) return null;
-
-  const now = Date.now();
-  const cached = tokenImageCache.get(tokenMint);
-
-  // Return cached result if valid
-  if (cached && (now - cached.timestamp) < TOKEN_IMAGE_CACHE_TTL) {
-    return cached.imageUrl;
-  }
-
-  try {
-    // Try DexScreener first - excellent coverage for Solana tokens including meme coins
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000); // 2s timeout - fail fast
-
-    const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${tokenMint}`, {
-      signal: controller.signal,
-      headers: { 'Accept': 'application/json' },
-    });
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
-      const data = await response.json();
-      // DexScreener returns pairs array, get image from first pair's baseToken or quoteToken
-      const pair = data.pairs?.[0];
-      const imageUrl = pair?.info?.imageUrl || pair?.baseToken?.logoURI || null;
-
-      if (imageUrl) {
-        tokenImageCache.set(tokenMint, { imageUrl, timestamp: now });
-        return imageUrl;
-      }
-    }
-
-    // Cache null result to avoid retrying
-    tokenImageCache.set(tokenMint, { imageUrl: null, timestamp: now });
-
-    // Limit cache size
-    if (tokenImageCache.size > 200) {
-      const oldestKey = tokenImageCache.keys().next().value;
-      if (oldestKey) tokenImageCache.delete(oldestKey);
-    }
-
-    return null;
-  } catch {
-    // On any error, cache null to avoid retrying immediately
-    tokenImageCache.set(tokenMint, { imageUrl: null, timestamp: now });
-    return null;
-  }
-}
-
 // Fetch fonts from Google Fonts
 async function getFont(font: string, weight: number): Promise<ArrayBuffer | null> {
   try {
@@ -164,7 +107,14 @@ async function getHighlights(address: string, apiUrl: string): Promise<any[]> {
   }
 
   const data = await response.json();
-  highlightsCache.set(address, { data, timestamp: now });
+
+  // Reorder highlights: move overall_pnl to the end (6th position) to match client UI
+  const reorderedData = [
+    ...data.filter((h: any) => h.type !== 'overall_pnl'),
+    ...data.filter((h: any) => h.type === 'overall_pnl'),
+  ];
+
+  highlightsCache.set(address, { data: reorderedData, timestamp: now });
 
   // Hard limit: remove oldest if still over 50 entries
   if (highlightsCache.size > 50) {
@@ -172,7 +122,7 @@ async function getHighlights(address: string, apiUrl: string): Promise<any[]> {
     if (oldestKey) highlightsCache.delete(oldestKey);
   }
 
-  return data;
+  return reorderedData;
 }
 
 // Firework theme colors
@@ -257,16 +207,9 @@ export async function GET(
     const type = '2025 WRAPPED';
     const highlightType = highlight.type;
     const tokenSymbol = highlight.metadata?.tokenSymbol;
-    const tokenMint = highlight.metadata?.tokenMint;
 
     // Determine if this card should show a prominent ticker/date
     const showProminentTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlightType) && tokenSymbol;
-
-    // Fetch token image if we're showing a prominent ticker (non-blocking, with fallback)
-    let tokenImageUrl: string | null = null;
-    if (showProminentTicker && tokenMint) {
-      tokenImageUrl = await getTokenImageUrl(tokenMint);
-    }
     const showProminentDate = highlightType === 'best_day' || highlightType === 'best_profit_day';
 
     // Calculate font size based on value length (ensure it fits in 344px width)
@@ -433,16 +376,42 @@ export async function GET(
                 <div
                   style={{
                     display: 'flex',
-                    fontSize: `${s(28)}px`,
-                    fontWeight: '700',
-                    background: 'linear-gradient(135deg, #ffffff 0%, #e5e5e5 100%)',
-                    backgroundClip: 'text',
-                    color: 'transparent',
-                    fontFamily: 'Inter',
-                    letterSpacing: '-0.03em',
+                    alignItems: 'center',
+                    gap: `${s(8)}px`,
                   }}
                 >
-                  {title}
+                  <div
+                    style={{
+                      display: 'flex',
+                      fontSize: `${s(28)}px`,
+                      fontWeight: '700',
+                      background: 'linear-gradient(135deg, #ffffff 0%, #e5e5e5 100%)',
+                      backgroundClip: 'text',
+                      color: 'transparent',
+                      fontFamily: 'Inter',
+                      letterSpacing: '-0.03em',
+                    }}
+                  >
+                    {title}
+                  </div>
+                  {/* Firework icon with gold/pink/purple gradient */}
+                  <svg
+                    width={s(20)}
+                    height={s(20)}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    style={{ display: 'flex', flexShrink: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="fireworkGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ffd700" />
+                        <stop offset="50%" stopColor="#ff6b9d" />
+                        <stop offset="100%" stopColor="#9d4edd" />
+                      </linearGradient>
+                    </defs>
+                    <circle cx="12" cy="12" r="2" fill="#ffd700" />
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="url(#fireworkGradient)" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
                 </div>
               </div>
               <div
@@ -494,40 +463,39 @@ export async function GET(
                   border: `${s(1)}px solid ${colors.text}30`,
                 }}
               >
-                {tokenImageUrl ? (
-                  // Show token image if available
-                  <img
-                    src={tokenImageUrl}
-                    alt={tokenSymbol || ''}
-                    width={s(40)}
-                    height={s(40)}
-                    style={{
-                      width: `${s(40)}px`,
-                      height: `${s(40)}px`,
-                      borderRadius: '50%',
-                      objectFit: 'cover',
-                      border: `${s(2)}px solid ${colors.text}50`,
-                    }}
-                  />
-                ) : (
-                  // Fallback to letter badge
-                  <div
-                    style={{
-                      width: `${s(40)}px`,
-                      height: `${s(40)}px`,
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: `${s(18)}px`,
-                      fontWeight: 'bold',
-                      background: `linear-gradient(135deg, ${colors.text} 0%, ${colors.text}80 100%)`,
-                      color: '#0a0a1a',
-                    }}
-                  >
-                    {tokenSymbol?.charAt(0) || '?'}
-                  </div>
-                )}
+                {/* Calendar icon */}
+                <svg
+                  width={s(40)}
+                  height={s(40)}
+                  viewBox="0 0 64 64"
+                  style={{ display: 'flex' }}
+                >
+                  {/* Calendar base */}
+                  <rect x="10" y="14" width="44" height="40" rx="4" fill="#1a1a2e" stroke="url(#borderGradToken)" strokeWidth="2" />
+                  {/* Calendar header */}
+                  <rect x="10" y="14" width="44" height="10" rx="4" fill="#2a2a42" />
+                  <rect x="10" y="20" width="44" height="4" fill="#2a2a42" />
+                  {/* Calendar rings */}
+                  <rect x="18" y="10" width="3" height="8" rx="1.5" fill="#ffd700" />
+                  <rect x="31" y="10" width="3" height="8" rx="1.5" fill="#ff6b9d" />
+                  <rect x="44" y="10" width="3" height="8" rx="1.5" fill="#9d4edd" />
+                  {/* Activity dots */}
+                  <circle cx="17" cy="31" r="2" fill="#10b981" />
+                  <circle cx="23" cy="31" r="2" fill="#ffd700" />
+                  <circle cx="35" cy="37" r="2" fill="#ff6b9d" />
+                  <circle cx="41" cy="37" r="2" fill="#10b981" />
+                  <circle cx="29" cy="43" r="2" fill="#9d4edd" />
+                  <circle cx="47" cy="43" r="2" fill="#ffd700" />
+                  {/* Trend line */}
+                  <path d="M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32" stroke="#10b981" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.7" />
+                  <defs>
+                    <linearGradient id="borderGradToken" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#ffd700" />
+                      <stop offset="50%" stopColor="#ff6b9d" />
+                      <stop offset="100%" stopColor="#9d4edd" />
+                    </linearGradient>
+                  </defs>
+                </svg>
                 <div
                   style={{
                     display: 'flex',
@@ -555,24 +523,21 @@ export async function GET(
                   border: `${s(1)}px solid ${colors.text}30`,
                 }}
               >
-                <div
-                  style={{
-                    width: `${s(40)}px`,
-                    height: `${s(40)}px`,
-                    borderRadius: '50%',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: `${s(16)}px`,
-                    fontWeight: 'bold',
-                    background: `linear-gradient(135deg, ${colors.text} 0%, ${colors.text}80 100%)`,
-                    color: '#0a0a1a',
-                  }}
-                >
-                  <svg width={s(20)} height={s(20)} viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zm0-12H5V6h14v2z"/>
-                  </svg>
-                </div>
+                {/* Calendar icon matching main logo style */}
+                <svg width={s(40)} height={s(40)} viewBox="0 0 64 64" fill="none" style={{ display: 'flex', flexShrink: 0 }}>
+                  {/* Calendar base */}
+                  <rect x="10" y="14" width="44" height="40" rx="4" fill="#1a1a2e" stroke={colors.text} strokeWidth="2" />
+                  {/* Calendar header bar */}
+                  <rect x="10" y="14" width="44" height="10" rx="4" fill={colors.text} />
+                  <rect x="10" y="20" width="44" height="4" fill={colors.text} />
+                  {/* Calendar rings/binding */}
+                  <rect x="18" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
+                  <rect x="31" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
+                  <rect x="44" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
+                  {/* Highlighted day indicator */}
+                  <circle cx="32" cy="37" r="8" fill={colors.text} opacity="0.3" />
+                  <circle cx="32" cy="37" r="5" fill={colors.text} />
+                </svg>
                 <div
                   style={{
                     display: 'flex',

@@ -518,6 +518,11 @@ export default function AnalyzePage() {
                 {statusMessage}
               </p>
             </div>
+            {statusMessage.includes('Generating your year into PNL cards') && (
+              <p className="text-sm text-gray-500 italic mt-1">
+                It only takes a few seconds...
+              </p>
+            )}
             {/* Activity timestamp - shows last update time during long operations */}
             {(currentStage === 'calculating' || currentStage === 'saving') && secondsSinceUpdate > 0 && (
               <p className="text-xs text-gray-600 mt-2">

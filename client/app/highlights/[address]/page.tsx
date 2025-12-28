@@ -458,6 +458,12 @@ export default function HighlightsPage() {
 
         const transformedHighlights = (highlightsData as ServerHighlight[]).map(transformHighlight);
 
+        // Reorder highlights: move overall_pnl to the end (6th position)
+        const reorderedHighlights = [
+          ...transformedHighlights.filter(h => h.type !== 'overall_pnl'),
+          ...transformedHighlights.filter(h => h.type === 'overall_pnl'),
+        ];
+
         setData({
           summary: {
             walletAddress: address,
@@ -469,7 +475,7 @@ export default function HighlightsPage() {
             closedPositions: summaryData.closedPositions || 0,
             winRate: summaryData.winRate || 0,
           },
-          highlights: transformedHighlights,
+          highlights: reorderedHighlights,
         });
         setLoading(false);
       } catch (err: any) {
@@ -713,11 +719,9 @@ export default function HighlightsPage() {
       }
       return `${h.title}: ${value}`;
     }).join('\n');
-    const shareText = `My 2025 Solana Wrapped:
+    const shareText = `My 2025 in the Trenches Wrapped:
 
-${summaryLines}
-
-Check your wallet at walletwrapped.xyz`;
+${summaryLines}`;
 
     try {
       // Copy the summary card image to clipboard (all highlights in one)
@@ -782,7 +786,7 @@ Check your wallet at walletwrapped.xyz`;
     } catch (error) {
       console.error('Share to X failed:', error);
       // Still open X even if clipboard failed
-      const fallbackText = `My 2025 Solana Wrapped:\n\n${highlights.map(h => `${h.title}: ${h.value}`).join('\n')}\n\nCheck your wallet at walletwrapped.xyz`;
+      const fallbackText = `My 2025 in the Trenches Wrapped:\n\n${highlights.map(h => `${h.title}: ${h.value}`).join('\n')}`;
       const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(fallbackText)}`;
       window.open(tweetUrl, '_blank', 'width=550,height=420');
       setShareStatus('idle');
@@ -1063,6 +1067,46 @@ Check your wallet at walletwrapped.xyz`;
           </button>
         </div>
 
+        {/* Share to X with Summary Preview */}
+        <div className="flex gap-4 mb-6 items-center p-4 rounded-xl bg-dark-800/50 border border-primary-500/50 animate-glow-pulse shadow-lg shadow-primary-500/20">
+          <div className="flex-1">
+            <div className="text-sm text-gray-400 mb-2">Share your complete 2025 summary</div>
+            <button
+              onClick={shareToX}
+              disabled={shareStatus === 'sharing'}
+              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-black hover:bg-gray-900 border border-gray-700 text-white font-medium transition-all duration-200"
+            >
+              {shareStatus === 'sharing' ? (
+                <>
+                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  Sharing...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                  </svg>
+                  Share to X (image auto-copied)
+                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </>
+              )}
+            </button>
+          </div>
+          {/* Summary Card Thumbnail */}
+          <div className="relative flex-shrink-0" style={{ width: '80px', height: '100px' }}>
+            <img
+              src={`/api/card/${address}/summary`}
+              alt="Summary preview"
+              className="w-full h-full object-cover rounded-lg border border-primary-500/30"
+            />
+          </div>
+        </div>
+
         {/* Card Action Buttons */}
         <div className="flex gap-3 mb-6">
           <button
@@ -1107,46 +1151,6 @@ Check your wallet at walletwrapped.xyz`;
               </>
             )}
           </button>
-        </div>
-
-        {/* Share to X with Summary Preview */}
-        <div className="flex gap-4 mb-6 items-center p-4 rounded-xl bg-dark-800/50 border border-dark-600">
-          <div className="flex-1">
-            <div className="text-sm text-gray-400 mb-2">Share your complete 2025 summary</div>
-            <button
-              onClick={shareToX}
-              disabled={shareStatus === 'sharing'}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-black hover:bg-gray-900 border border-gray-700 text-white font-medium transition-all duration-200"
-            >
-              {shareStatus === 'sharing' ? (
-                <>
-                  <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                  Sharing...
-                </>
-              ) : (
-                <>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                  </svg>
-                  Share to X (image auto-copied)
-                  <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                </>
-              )}
-            </button>
-          </div>
-          {/* Summary Card Thumbnail */}
-          <div className="relative flex-shrink-0" style={{ width: '80px', height: '100px' }}>
-            <img
-              src={`/api/card/${address}/summary`}
-              alt="Summary preview"
-              className="w-full h-full object-cover rounded-lg border border-primary-500/30"
-            />
-          </div>
         </div>
 
         {/* Navigation */}

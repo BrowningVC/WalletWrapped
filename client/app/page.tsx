@@ -62,15 +62,15 @@ export default function HomePage() {
 
             {/* Main heading with festive styling */}
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 animate-slide-up text-balance">
-              <span className="text-white">Unwrap Your </span>
-              <span className="nye-shimmer">2025</span>
+              <span className="text-white">Your Year In The</span>
               <br />
-              <span className="festive-gradient-text">Solana Trading Year</span>
+              <span className="text-transparent bg-clip-text bg-gradient-to-b from-amber-600 via-amber-800 to-amber-950">Trenches</span>
+              {' '}
+              <span className="festive-gradient-text">Wrapped</span>
             </h1>
 
             <p className="text-xl sm:text-2xl text-gray-400 mb-12 max-w-2xl mx-auto animate-slide-up delay-100">
-              Get shareable highlight cards and detailed analytics for any Solana wallet.
-              No login required.
+              Instantly generated PNL highlight cards. No login required.
             </p>
 
             {/* Wallet input */}
@@ -78,66 +78,62 @@ export default function HomePage() {
               <WalletInput onAnalyze={handleAnalyze} isLoading={isAnalyzing} />
             </div>
 
+            {/* Token Contract Section - moved below analyze button */}
+            <div className="mt-8 max-w-xl mx-auto animate-slide-up delay-300">
+              <h3 className="text-lg font-semibold mb-3 text-center">
+                <span className="festive-gradient-text">$WRAPPED</span>
+                <span className="text-white"> Token</span>
+              </h3>
+
+              <div className="flex items-center gap-2 bg-dark-800/50 border border-dark-700 rounded-lg p-3 hover:border-festive-gold/30 transition-colors">
+                <div className="flex-1 text-left font-mono text-sm text-gray-400 overflow-x-auto">
+                  {tokenContract}
+                </div>
+
+                <button
+                  onClick={copyTokenContract}
+                  disabled={tokenContract === 'COMING_SOON'}
+                  className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${
+                    tokenContract === 'COMING_SOON'
+                      ? 'bg-dark-700 text-gray-500 cursor-not-allowed'
+                      : copied
+                      ? 'bg-festive-gold/20 text-festive-gold'
+                      : 'bg-festive-gold/10 text-festive-gold hover:bg-festive-gold/20'
+                  }`}
+                >
+                  {copied ? (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
             {/* Stats */}
             <div className="mt-12 grid grid-cols-3 gap-8 max-w-2xl mx-auto animate-fade-in delay-400">
               <div className="text-center">
-                <div className="text-3xl font-bold text-festive-gold">6</div>
+                <div className="text-3xl font-bold text-festive-gold">7</div>
                 <div className="text-sm text-gray-500 mt-1">Highlight Cards</div>
               </div>
               <div className="text-center">
-                <div className="text-3xl font-bold text-festive-pink">&lt;60s</div>
+                <div className="text-3xl font-bold text-festive-pink">15s</div>
                 <div className="text-sm text-gray-500 mt-1">Analysis Time</div>
               </div>
               <div className="text-center">
                 <div className="text-3xl font-bold text-festive-purple">100%</div>
                 <div className="text-sm text-gray-500 mt-1">Free Forever</div>
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Token Contract Section */}
-      <section className="py-12 bg-dark-900/50 border-t border-dark-700">
-        <div className="container mx-auto px-4">
-          <div className="max-w-2xl mx-auto text-center">
-            <h3 className="text-xl font-semibold mb-4">
-              <span className="festive-gradient-text">$WRAPPED</span>
-              <span className="text-white"> Token</span>
-            </h3>
-
-            <div className="flex items-center gap-2 bg-dark-800/50 border border-dark-700 rounded-lg p-4 hover:border-festive-gold/30 transition-colors">
-              <div className="flex-1 text-left font-mono text-sm text-gray-400 overflow-x-auto">
-                {tokenContract}
-              </div>
-
-              <button
-                onClick={copyTokenContract}
-                disabled={tokenContract === 'COMING_SOON'}
-                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
-                  tokenContract === 'COMING_SOON'
-                    ? 'bg-dark-700 text-gray-500 cursor-not-allowed'
-                    : copied
-                    ? 'bg-festive-gold/20 text-festive-gold'
-                    : 'bg-festive-gold/10 text-festive-gold hover:bg-festive-gold/20'
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                    Copied!
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                    Copy
-                  </>
-                )}
-              </button>
             </div>
           </div>
         </div>

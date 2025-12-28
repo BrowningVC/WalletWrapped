@@ -93,14 +93,21 @@ async function getHighlights(address: string, apiUrl: string): Promise<any[]> {
     throw new Error(`Failed to fetch highlights: ${response.status}`);
   }
   const data = await response.json();
-  highlightsCache.set(address, { data, timestamp: now });
+
+  // Reorder highlights: move overall_pnl to the end (6th position) to match client UI
+  const reorderedData = [
+    ...data.filter((h: any) => h.type !== 'overall_pnl'),
+    ...data.filter((h: any) => h.type === 'overall_pnl'),
+  ];
+
+  highlightsCache.set(address, { data: reorderedData, timestamp: now });
 
   // Hard limit: remove oldest if still over 50 entries
   if (highlightsCache.size > 50) {
     const oldestKey = highlightsCache.keys().next().value;
     if (oldestKey) highlightsCache.delete(oldestKey);
   }
-  return data;
+  return reorderedData;
 }
 
 export async function GET(
@@ -224,13 +231,39 @@ export async function GET(
                 <div
                   style={{
                     display: 'flex',
-                    fontSize: `${s(20)}px`,
-                    fontWeight: '700',
-                    color: 'white',
-                    letterSpacing: '-0.02em',
+                    alignItems: 'center',
+                    gap: `${s(6)}px`,
                   }}
                 >
-                  2025 Wrapped
+                  <div
+                    style={{
+                      display: 'flex',
+                      fontSize: `${s(20)}px`,
+                      fontWeight: '700',
+                      color: 'white',
+                      letterSpacing: '-0.02em',
+                    }}
+                  >
+                    2025 Wrapped
+                  </div>
+                  {/* Firework icon with gold/pink/purple gradient */}
+                  <svg
+                    width={s(16)}
+                    height={s(16)}
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    style={{ display: 'flex', flexShrink: 0 }}
+                  >
+                    <defs>
+                      <linearGradient id="fireworkGradientSummary" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ffd700" />
+                        <stop offset="50%" stopColor="#ff6b9d" />
+                        <stop offset="100%" stopColor="#9d4edd" />
+                      </linearGradient>
+                    </defs>
+                    <circle cx="12" cy="12" r="2" fill="#ffd700" />
+                    <path d="M12 2v4M12 18v4M2 12h4M18 12h4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" stroke="url(#fireworkGradientSummary)" strokeWidth="1.5" strokeLinecap="round" />
+                  </svg>
                 </div>
                 <div
                   style={{

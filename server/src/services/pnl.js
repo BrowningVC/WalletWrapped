@@ -535,6 +535,10 @@ class PNLCalculator {
 
       if (pos.isActive) {
         activePositions++;
+        // Also count active positions with realized profit (partial sells taken profit)
+        if (pos.realizedPNL > 0) {
+          profitablePositions++;
+        }
       } else {
         closedPositions++;
         // Count closed positions as profitable based on realized P&L only
@@ -544,9 +548,10 @@ class PNLCalculator {
       }
     }
 
-    // Win rate only counts closed positions (not active holdings)
-    const winRate = closedPositions > 0
-      ? (profitablePositions / closedPositions) * 100
+    // Win rate counts all positions with realized profit (closed + active with partial sells)
+    const totalTradesWithRealizedPNL = closedPositions + Object.values(positions).filter(p => p.isActive && p.realizedPNL !== 0).length;
+    const winRate = totalTradesWithRealizedPNL > 0
+      ? (profitablePositions / totalTradesWithRealizedPNL) * 100
       : 0;
 
     // Use Net SOL Flow as primary (more accurate for overall P&L)

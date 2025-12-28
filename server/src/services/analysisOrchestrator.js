@@ -199,6 +199,9 @@ async function runAnalysis(walletAddress, incremental = false) {
       ? WalletAnalyzer.analyzeWalletIncremental
       : WalletAnalyzer.analyzeWallet;
 
+    // Track transaction count from progress updates
+    let lastTransactionCount = null;
+
     const analysisResult = await analyzer.call(
       WalletAnalyzer,
       walletAddress,
@@ -206,6 +209,10 @@ async function runAnalysis(walletAddress, incremental = false) {
         // Check for cancellation on each progress update
         if (abortController.signal.aborted) {
           throw new Error('Analysis cancelled');
+        }
+        // Track transaction count for later progress updates
+        if (details.fetched) {
+          lastTransactionCount = details.fetched;
         }
         emitProgress(walletAddress, percent, message, details);
         DatabaseQueries.updateAnalysisProgress(
@@ -216,15 +223,18 @@ async function runAnalysis(walletAddress, incremental = false) {
       }
     );
 
+    // Helper to include transaction count in progress updates
+    const txDetails = lastTransactionCount ? { fetched: lastTransactionCount, total: lastTransactionCount, processed: lastTransactionCount } : {};
+
     // If cached result, return early
     if (analysisResult.cached) {
-      await emitProgress(walletAddress, 100, 'Using cached results');
+      await emitProgress(walletAddress, 100, 'Using cached results', txDetails);
       await emitComplete(walletAddress, analysisResult);
       return analysisResult;
     }
 
     // Generate highlights (85-95%)
-    await emitProgress(walletAddress, 85, 'Generating highlights...');
+    await emitProgress(walletAddress, 85, 'Generating highlights...', txDetails);
 
     if (abortController.signal.aborted) {
       throw new Error('Analysis cancelled');
@@ -261,7 +271,7 @@ async function runAnalysis(walletAddress, incremental = false) {
       summary
     );
 
-    await emitProgress(walletAddress, 90, 'Saving highlights...');
+    await emitProgress(walletAddress, 90, 'Saving highlights...', txDetails);
 
     // Save highlights to database
     for (const highlight of highlights) {
@@ -271,7 +281,7 @@ async function runAnalysis(walletAddress, incremental = false) {
       await DatabaseQueries.upsertHighlight(walletAddress, highlight);
     }
 
-    await emitProgress(walletAddress, 95, 'Warming cache...');
+    await emitProgress(walletAddress, 95, 'Warming cache...', txDetails);
 
     // Warm cache for fast subsequent requests
     await CacheManager.warmWalletCache(walletAddress, {
@@ -280,7 +290,7 @@ async function runAnalysis(walletAddress, incremental = false) {
       dailyPNL: JSON.stringify(dailyPNL)
     });
 
-    await emitProgress(walletAddress, 96, 'Pre-generating card images...');
+    await emitProgress(walletAddress, 96, 'Generating your year into PNL cards...', txDetails);
 
     // Pre-generate and cache all card images for instant loading
     const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';

@@ -133,26 +133,6 @@ export default function WalletInput({ onAnalyze, isLoading = false }: WalletInpu
         )}
       </button>
 
-      {/* Example wallets */}
-      <div className="mt-4 text-center">
-        <p className="text-sm text-gray-600 mb-2">Or try an example:</p>
-        <div className="flex flex-wrap justify-center gap-2">
-          {[
-            '7Np41oeYqPefeNQEHSv1UDhYrehxin3NStELsSKCT4K2',
-            'GjKhyGjJKLwNFCmN1z3FYfGsQqPzLhNtfbWqKHmxQLVx',
-          ].map((exampleAddr) => (
-            <button
-              key={exampleAddr}
-              type="button"
-              onClick={() => setAddress(exampleAddr)}
-              className="text-xs px-3 py-1.5 bg-dark-900 hover:bg-dark-800 border border-dark-600 hover:border-festive-gold/30 rounded-full transition-colors text-gray-400 hover:text-festive-gold"
-              disabled={isLoading}
-            >
-              {exampleAddr.slice(0, 4)}...{exampleAddr.slice(-4)}
-            </button>
-          ))}
-        </div>
-      </div>
     </form>
   );
 }
