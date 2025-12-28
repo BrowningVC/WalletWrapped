@@ -11,8 +11,9 @@ const DatabaseQueries = require('../database/queries');
  * v4 - Excluded stablecoins from biggest win/loss calculations
  * v5 - Changed decimal precision from 2-4 decimals to 1 decimal place for all values
  * v6 - Updated best profit day fallback message to "Never a profitable day? Sheesh!"
+ * v7 - Fixed best profit day calculation to use dailyPNL aggregates instead of position.trades
  */
-const HIGHLIGHTS_VERSION = 6;
+const HIGHLIGHTS_VERSION = 7;
 
 // Stablecoins and wrapped tokens to exclude from win/loss calculations
 // These are used for swapping, not trading
@@ -59,7 +60,7 @@ class HighlightsGenerator {
     highlights.push(await this.biggestLoss(positions, solPriceUSD));
     highlights.push(await this.winRate(summary));
     highlights.push(await this.longestHold(positions, transactions));
-    highlights.push(await this.bestProfitDay(positions, transactions, solPriceUSD));
+    highlights.push(await this.bestProfitDay(dailyPNL, solPriceUSD));
 
     // Add rank and version to each highlight (1-6)
     const rankedHighlights = highlights.map((h, index) => ({
@@ -327,50 +328,23 @@ class HighlightsGenerator {
   }
 
   /**
-   * 6. Best Profit Day - Most profit made in a single day (excluding stablecoins)
+   * 6. Best Profit Day - Most profit made in a single day
+   * Uses the dailyPNL aggregates from the database
    */
-  static async bestProfitDay(positions, transactions, solPriceUSD) {
-    // Group sells by day and calculate daily profit using FIFO-calculated realizedPnl
-    const dailyProfit = {};
-
-    for (const position of Object.values(positions)) {
-      if (!position.trades) continue;
-      if (this.isExcludedToken(position)) continue; // Skip stablecoins
-
-      for (const trade of position.trades) {
-        // Only count sells that have realized P&L calculated
-        if (trade.type !== 'SELL') continue;
-
-        const date = new Date(trade.blockTime).toISOString().split('T')[0];
-
-        if (!dailyProfit[date]) {
-          dailyProfit[date] = {
-            profitSol: 0,
-            tokens: new Set()
-          };
-        }
-
-        // Use the FIFO-calculated realizedPnl from the trade
-        const profit = trade.realizedPnl || 0;
-
-        if (profit > 0) {
-          dailyProfit[date].profitSol += profit;
-          dailyProfit[date].tokens.add(position.tokenSymbol);
-        }
-      }
-    }
-
-    // Find the best day
+  static async bestProfitDay(dailyPNL, solPriceUSD) {
+    // Find the day with the highest realized P&L
     let bestDay = null;
     let maxProfit = 0;
 
-    for (const [date, data] of Object.entries(dailyProfit)) {
-      if (data.profitSol > maxProfit) {
-        maxProfit = data.profitSol;
+    for (const [date, data] of Object.entries(dailyPNL)) {
+      const profitSol = data.realizedPNLSol || 0;
+
+      // Only consider profitable days
+      if (profitSol > maxProfit) {
+        maxProfit = profitSol;
         bestDay = {
           date,
-          profitSol: data.profitSol,
-          tokens: Array.from(data.tokens)
+          profitSol
         };
       }
     }
@@ -387,7 +361,6 @@ class HighlightsGenerator {
           date: null,
           profitSol: 0,
           profitUsd: 0,
-          tokens: '',
           noData: true,
           formattedPrimary: '$0',
           formattedSecondary: '(0 SOL)'
@@ -412,7 +385,6 @@ class HighlightsGenerator {
         date: bestDay.date,
         profitSol: this.roundSol(bestDay.profitSol),
         profitUsd: this.roundUsd(profitUsd),
-        tokens: bestDay.tokens.join(', '),
         formattedPrimary: this.formatUsd(profitUsd),
         formattedSecondary: `(${this.formatSol(bestDay.profitSol)} SOL)`
       }

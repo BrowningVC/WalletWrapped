@@ -105,6 +105,20 @@ const stageConfig = [
   { key: 'highlights', label: 'Highlights', description: 'Generating your wrapped cards' },
 ];
 
+// Progress encouragement messages that rotate every 5 seconds
+const progressMessages = [
+  "Crunching the numbers...",
+  "Almost there, hang tight...",
+  "Processing your trades...",
+  "Getting closer...",
+  "Just a bit longer...",
+  "Finalizing calculations...",
+  "Wrapping up your results...",
+  "Nearly done...",
+  "Polishing the details...",
+  "Working hard on this...",
+];
+
 export default function AnalyzePage() {
   const params = useParams();
   const router = useRouter();
@@ -124,6 +138,7 @@ export default function AnalyzePage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
+  const [progressMessageIndex, setProgressMessageIndex] = useState(0);
 
   useEffect(() => {
     if (!startTime) return;
@@ -135,6 +150,17 @@ export default function AnalyzePage() {
 
     return () => clearInterval(interval);
   }, [startTime, lastUpdateTime]);
+
+  // Rotate progress messages every 5 seconds when analysis is taking a while
+  useEffect(() => {
+    if (secondsSinceUpdate < 10) return; // Only show messages if update is taking a while
+
+    const interval = setInterval(() => {
+      setProgressMessageIndex((prev) => (prev + 1) % progressMessages.length);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [secondsSinceUpdate]);
 
   useEffect(() => {
     if (displayProgress >= progress) return;
@@ -160,7 +186,7 @@ export default function AnalyzePage() {
     startAnalysis();
     setStartTime(Date.now());
 
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3003';
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
@@ -219,7 +245,7 @@ export default function AnalyzePage() {
 
   const startAnalysis = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
       const response = await fetch(`${apiUrl}/api/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -463,17 +489,15 @@ export default function AnalyzePage() {
                 {statusMessage}
               </p>
             </div>
-            {/* Extra hint during calculating stage */}
-            {currentStage === 'calculating' && progress >= 50 && progress < 70 && (
-              <p className="text-xs text-gray-500 mt-2 animate-pulse">
-                Processing FIFO calculations for each trade...
-              </p>
-            )}
             {/* Activity timestamp - shows last update time during long operations */}
             {(currentStage === 'calculating' || currentStage === 'saving') && secondsSinceUpdate > 0 && (
               <p className="text-xs text-gray-600 mt-2">
                 Last update: {secondsSinceUpdate < 60 ? `${secondsSinceUpdate}s ago` : `${Math.floor(secondsSinceUpdate / 60)}m ${secondsSinceUpdate % 60}s ago`}
-                {secondsSinceUpdate > 10 && <span className="text-festive-gold ml-2">Still working...</span>}
+                {secondsSinceUpdate > 10 && (
+                  <span className="text-festive-gold ml-2 animate-pulse">
+                    {progressMessages[progressMessageIndex]}
+                  </span>
+                )}
               </p>
             )}
           </div>
@@ -579,7 +603,7 @@ export default function AnalyzePage() {
 
           {/* Tip */}
           <div className="text-xs text-gray-500 text-center mt-4 pt-4 border-t border-dark-700/50">
-            Your <span className="text-festive-gold">2024</span> highlights will be ready once analysis completes
+            Your <span className="text-festive-gold">2025</span> highlights will be ready once analysis completes
           </div>
         </div>
       </div>

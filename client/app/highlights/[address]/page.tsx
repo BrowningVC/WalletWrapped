@@ -3,40 +3,12 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import html2canvas from 'html2canvas';
-
-type Theme = 'holographic' | 'cyberpunk' | 'aurora' | 'candy';
+import Logo from '@/components/Logo';
+import WalletCounter from '@/components/WalletCounter';
+import Fireworks from '@/components/Fireworks';
 
 // SVG Icon Components
 const Icons = {
-  // Theme icons
-  holographic: () => (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707" />
-      <circle cx="12" cy="12" r="4" fill="currentColor" opacity="0.3" />
-    </svg>
-  ),
-  cyberpunk: () => (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <path d="M9 9h.01M15 9h.01M9 15h6" />
-      <path d="M4 12h2m12 0h2" strokeLinecap="round" />
-    </svg>
-  ),
-  aurora: () => (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <path d="M12 2l.324 1.62a9 9 0 004.056 4.056L18 8l-1.62.324a9 9 0 00-4.056 4.056L12 14l-.324-1.62a9 9 0 00-4.056-4.056L6 8l1.62-.324a9 9 0 004.056-4.056L12 2z" fill="currentColor" opacity="0.3" />
-      <circle cx="18" cy="18" r="2" />
-      <circle cx="6" cy="18" r="1" />
-    </svg>
-  ),
-  candy: () => (
-    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-      <circle cx="12" cy="12" r="6" />
-      <path d="M12 6c-2 0-4 2-4 6s2 6 4 6" strokeLinecap="round" />
-      <path d="M6.5 9L4 7M17.5 9l2.5-2M6.5 15L4 17M17.5 15l2.5 2" strokeLinecap="round" />
-    </svg>
-  ),
   // Highlight icons
   wallet: () => (
     <svg className="w-8 h-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -116,12 +88,6 @@ const getHighlightIcon = (type: string): React.FC => {
   return iconMap[type] || Icons.sparkles;
 };
 
-const themeInfo: Record<Theme, { name: string; icon: React.FC }> = {
-  holographic: { name: 'Holographic', icon: Icons.holographic },
-  cyberpunk: { name: 'Cyberpunk', icon: Icons.cyberpunk },
-  aurora: { name: 'Aurora', icon: Icons.aurora },
-  candy: { name: 'Candy', icon: Icons.candy },
-};
 
 interface HighlightMetadata {
   tokenSymbol?: string;
@@ -270,113 +236,27 @@ function transformHighlight(serverHighlight: ServerHighlight): Highlight {
   };
 }
 
-// Theme-specific decorative backgrounds
-function HolographicDecorations() {
+// Firework-themed decorative background (no animations for clean image copying)
+function FireworkDecorations() {
   return (
     <>
-      {/* Holographic prismatic shapes */}
-      <div className="absolute top-4 right-4 w-24 h-24 opacity-60">
-        <div className="absolute inset-0 bg-gradient-to-br from-pink-500 via-purple-500 to-cyan-500 rounded-full blur-xl" />
-        <div className="absolute inset-2 bg-gradient-to-tr from-orange-400 via-pink-500 to-purple-600 rounded-full blur-lg" />
-      </div>
-      <div className="absolute bottom-32 left-4 w-16 h-16 opacity-50">
-        <div className="absolute inset-0 bg-gradient-to-br from-cyan-400 via-purple-500 to-pink-500 rounded-full blur-lg" />
-      </div>
-      {/* Rainbow line accents */}
-      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-pink-500 via-yellow-500 via-green-500 via-cyan-500 to-purple-500" />
-      <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-purple-500 via-cyan-500 via-green-500 via-yellow-500 to-pink-500" />
-      {/* Floating diamonds */}
-      <div className="absolute top-[20%] left-[15%] text-2xl opacity-40 rotate-45 text-purple-300">◇</div>
-      <div className="absolute top-[55%] right-[10%] text-3xl opacity-30 -rotate-12 text-cyan-300">◇</div>
-      <div className="absolute bottom-[30%] left-[80%] text-xl opacity-50 rotate-12 text-pink-300">◇</div>
-    </>
-  );
-}
+      {/* Subtle sparkle particles */}
+      <div className="absolute top-10 right-10 w-2 h-2 rounded-full bg-festive-gold/60" />
+      <div className="absolute top-20 right-20 w-1.5 h-1.5 rounded-full bg-festive-pink/50" />
+      <div className="absolute bottom-20 left-10 w-2 h-2 rounded-full bg-primary-400/60" />
+      <div className="absolute bottom-32 left-20 w-1.5 h-1.5 rounded-full bg-festive-gold/50" />
 
-function CyberpunkDecorations() {
-  return (
-    <>
-      {/* Neon grid lines */}
-      <div className="absolute inset-0 opacity-20">
-        <div className="absolute top-1/4 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500 to-transparent" />
-        <div className="absolute top-2/4 left-0 right-0 h-px bg-gradient-to-r from-transparent via-pink-500 to-transparent" />
-        <div className="absolute top-[65%] left-0 right-0 h-px bg-gradient-to-r from-transparent via-yellow-500 to-transparent" />
-        <div className="absolute top-0 bottom-0 left-1/4 w-px bg-gradient-to-b from-transparent via-cyan-500 to-transparent" />
-        <div className="absolute top-0 bottom-0 right-1/4 w-px bg-gradient-to-b from-transparent via-pink-500 to-transparent" />
-      </div>
-      {/* Glitch rectangles */}
-      <div className="absolute top-8 right-8 w-20 h-8 border-2 border-cyan-500 opacity-60" />
-      <div className="absolute top-10 right-6 w-20 h-8 border-2 border-pink-500 opacity-40" />
-      {/* Circuit patterns */}
-      <div className="absolute bottom-28 left-4 text-cyan-500 opacity-40 text-xs font-mono">
-        {'>>_SYS.2024'}
-      </div>
-      <div className="absolute top-16 right-4 text-pink-500 opacity-40 text-xs font-mono">
-        {'[PROFIT.EXE]'}
-      </div>
-      {/* Neon corner brackets */}
-      <div className="absolute top-4 left-4 w-8 h-8 border-l-2 border-t-2 border-cyan-500 opacity-70" />
-      <div className="absolute bottom-4 right-4 w-8 h-8 border-r-2 border-b-2 border-pink-500 opacity-70" />
-      {/* Scanline effect overlay */}
-      <div className="absolute inset-0 bg-[repeating-linear-gradient(0deg,transparent,transparent_2px,rgba(0,0,0,0.1)_2px,rgba(0,0,0,0.1)_4px)] pointer-events-none" />
-    </>
-  );
-}
-
-function AuroraDecorations() {
-  return (
-    <>
-      {/* Northern lights waves */}
-      <div className="absolute top-0 left-0 right-0 h-48 overflow-hidden opacity-60">
-        <div className="absolute inset-0 bg-gradient-to-b from-green-400/30 via-cyan-500/20 to-transparent" />
-        <div className="absolute top-4 left-[10%] w-[80%] h-24 bg-gradient-to-r from-transparent via-green-400/40 to-transparent rounded-full blur-2xl" />
-        <div className="absolute top-8 left-[20%] w-[60%] h-20 bg-gradient-to-r from-transparent via-purple-500/30 to-transparent rounded-full blur-xl" />
-        <div className="absolute top-12 left-[5%] w-[90%] h-16 bg-gradient-to-r from-transparent via-cyan-400/25 to-transparent rounded-full blur-2xl" />
-      </div>
-      {/* Stars */}
-      <div className="absolute top-[15%] left-[10%] w-1 h-1 bg-white rounded-full opacity-80" />
-      <div className="absolute top-[8%] left-[30%] w-1.5 h-1.5 bg-white rounded-full opacity-60" />
-      <div className="absolute top-[12%] right-[20%] w-1 h-1 bg-white rounded-full opacity-70" />
-      <div className="absolute top-[5%] right-[35%] w-0.5 h-0.5 bg-white rounded-full opacity-50" />
-      <div className="absolute top-[18%] left-[60%] w-1 h-1 bg-cyan-300 rounded-full opacity-60" />
-      <div className="absolute top-[10%] left-[80%] w-1.5 h-1.5 bg-green-300 rounded-full opacity-50" />
-      {/* Mountain silhouette - positioned higher to not overlap footer */}
-      <div className="absolute bottom-16 left-0 right-0 h-16 opacity-20 pointer-events-none">
-        <svg viewBox="0 0 400 64" className="w-full h-full" preserveAspectRatio="none">
-          <path d="M0 64 L0 48 L50 32 L100 44 L150 24 L200 40 L250 20 L300 36 L350 28 L400 40 L400 64 Z" fill="#1a1a2e"/>
-        </svg>
+      {/* Corner accent lines */}
+      <div className="absolute top-0 right-0 w-16 h-16">
+        <div className="absolute top-4 right-4 w-12 h-px bg-gradient-to-l from-primary-500/40 to-transparent" />
+        <div className="absolute top-4 right-4 w-px h-12 bg-gradient-to-t from-primary-500/40 to-transparent" />
       </div>
     </>
   );
 }
 
-function CandyDecorations() {
-  return (
-    <>
-      {/* Floating candy/bubble shapes */}
-      <div className="absolute top-8 right-8 w-16 h-16 rounded-full bg-gradient-to-br from-pink-300 to-pink-400 opacity-60" />
-      <div className="absolute top-12 right-20 w-8 h-8 rounded-full bg-gradient-to-br from-purple-300 to-purple-400 opacity-50" />
-      <div className="absolute bottom-32 left-6 w-12 h-12 rounded-full bg-gradient-to-br from-cyan-300 to-cyan-400 opacity-50" />
-      <div className="absolute top-1/3 left-4 w-6 h-6 rounded-full bg-gradient-to-br from-yellow-300 to-yellow-400 opacity-60" />
-      <div className="absolute bottom-[38%] right-6 w-10 h-10 rounded-full bg-gradient-to-br from-green-300 to-green-400 opacity-40" />
-      {/* Confetti dots */}
-      <div className="absolute top-[20%] left-[20%] w-3 h-3 rounded-full bg-pink-400 opacity-70" />
-      <div className="absolute top-[30%] right-[15%] w-2 h-2 rounded-full bg-yellow-400 opacity-60" />
-      <div className="absolute top-[50%] left-[10%] w-2.5 h-2.5 rounded-full bg-purple-400 opacity-50" />
-      <div className="absolute bottom-[38%] right-[25%] w-2 h-2 rounded-full bg-cyan-400 opacity-60" />
-      <div className="absolute bottom-[25%] left-[30%] w-3 h-3 rounded-full bg-green-400 opacity-50" />
-      {/* Wavy line decorations */}
-      <div className="absolute bottom-0 left-0 right-0 h-3 bg-gradient-to-r from-pink-300 via-purple-300 via-cyan-300 to-pink-300 opacity-50" />
-      {/* Star sprinkles */}
-      <div className="absolute top-[40%] right-[8%] text-yellow-400 opacity-70">★</div>
-      <div className="absolute top-[15%] left-[25%] text-pink-400 opacity-60 text-sm">★</div>
-      <div className="absolute bottom-[42%] left-[5%] text-purple-400 opacity-50">★</div>
-    </>
-  );
-}
-
-// PNL Card Component - fully themed design
-function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; walletAddress: string; theme: Theme }) {
+// PNL Card Component - firework theme
+function PNLCard({ highlight, walletAddress }: { highlight: Highlight; walletAddress: string }) {
   const isProfit = highlight.colorScheme === 'profit';
   const isLoss = highlight.colorScheme === 'loss';
 
@@ -386,62 +266,14 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
       ? 'pnl-card pnl-card-loss'
       : 'pnl-card pnl-card-neutral';
 
-  // Theme-specific styles
-  const getThemeStyles = () => {
-    switch (theme) {
-      case 'holographic':
-        return {
-          valueClass: isProfit ? 'text-cyan-300' : isLoss ? 'text-pink-400' : 'text-purple-300',
-          subtitleClass: 'text-gray-300',
-          accentClass: 'text-purple-400',
-          labelClass: 'text-gray-400',
-          contextClass: 'text-gray-400/80',
-          borderClass: 'border-purple-400/30',
-        };
-      case 'cyberpunk':
-        return {
-          valueClass: isProfit ? 'text-cyan-400' : isLoss ? 'text-pink-500' : 'text-yellow-400',
-          subtitleClass: 'text-gray-300',
-          accentClass: 'text-yellow-400',
-          labelClass: 'text-gray-400',
-          contextClass: 'text-gray-400/80',
-          borderClass: 'border-cyan-500/30',
-        };
-      case 'aurora':
-        return {
-          valueClass: isProfit ? 'text-green-300' : isLoss ? 'text-purple-400' : 'text-cyan-300',
-          subtitleClass: 'text-gray-300',
-          accentClass: 'text-cyan-300',
-          labelClass: 'text-gray-400',
-          contextClass: 'text-gray-400/80',
-          borderClass: 'border-green-400/30',
-        };
-      case 'candy':
-        return {
-          valueClass: isProfit ? 'text-green-600' : isLoss ? 'text-pink-600' : 'text-purple-600',
-          subtitleClass: 'text-gray-700',
-          accentClass: 'text-pink-500',
-          labelClass: 'text-gray-600',
-          contextClass: 'text-gray-600/90',
-          borderClass: 'border-pink-300',
-        };
-    }
-  };
-
-  const styles = getThemeStyles();
-
-  // Theme-specific decorations
-  const renderDecorations = () => {
-    switch (theme) {
-      case 'holographic':
-        return <HolographicDecorations />;
-      case 'cyberpunk':
-        return <CyberpunkDecorations />;
-      case 'aurora':
-        return <AuroraDecorations />;
-      case 'candy':
-        return <CandyDecorations />;
-    }
+  // Firework theme styles
+  const styles = {
+    valueClass: isProfit ? 'text-green-400' : isLoss ? 'text-red-400' : 'text-primary-400',
+    subtitleClass: 'text-gray-300',
+    accentClass: 'text-primary-400',
+    labelClass: 'text-gray-400',
+    contextClass: 'text-gray-400/80',
+    borderClass: 'border-primary-400/30',
   };
 
   // Calculate font size based on value length (explicit values for html2canvas)
@@ -455,19 +287,19 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
   };
 
   return (
-    <div className={`${cardClass} w-full mx-auto`} style={{ height: '520px', minHeight: '520px' }}>
-      {/* Theme-specific decorations */}
-      {renderDecorations()}
+    <div className={cardClass} style={{ width: '400px', height: '520px', position: 'relative', outline: 'none', border: 'none' }}>
+      {/* Firework decorations */}
+      <FireworkDecorations />
 
-      {/* Content - using explicit heights instead of flexbox auto margins */}
-      <div className="relative z-10 h-full flex flex-col p-6">
-        {/* Top section - Title & Year (fixed height) */}
-        <div className="flex justify-between items-start" style={{ minHeight: '80px' }}>
+      {/* Content - using absolute positioning for consistent rendering */}
+      <div style={{ position: 'relative', zIndex: 10, padding: '24px', height: '100%', border: 'none', outline: 'none' }}>
+        {/* Top section - Title & Year */}
+        <div style={{ position: 'absolute', top: '24px', left: '24px', right: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <div className={`text-sm uppercase tracking-wider mb-1 ${styles.labelClass}`}>
-              {highlight.type === 'overall_pnl' ? '2024 WRAPPED' : highlight.type.replace(/_/g, ' ').toUpperCase()}
+            <div className={`text-sm uppercase tracking-wider mb-1 ${styles.labelClass}`} style={{ marginBottom: '4px' }}>
+              {highlight.type === 'overall_pnl' ? '2025 WRAPPED' : highlight.type.replace(/_/g, ' ').toUpperCase()}
             </div>
-            <h2 className={`text-2xl font-bold flex items-center gap-3 ${theme === 'candy' ? 'text-gray-800' : 'text-white'}`}>
+            <h2 style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', display: 'flex', alignItems: 'center', gap: '12px', margin: 0 }}>
               <span className={styles.valueClass}>
                 {(() => {
                   const IconComponent = getHighlightIcon(highlight.type);
@@ -477,59 +309,82 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
               {highlight.title}
             </h2>
           </div>
-          <div className={`text-xl font-bold ${styles.accentClass}`}>
-            2024
+          <div className={styles.accentClass} style={{ fontSize: '20px', fontWeight: 'bold' }}>
+            2025
           </div>
         </div>
 
         {/* Token ticker if applicable */}
         {highlight.tokenTicker && (
-          <div className="flex items-center gap-2 mt-4">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
-              theme === 'candy'
-                ? isProfit ? 'bg-green-500 text-white' : isLoss ? 'bg-pink-500 text-white' : 'bg-purple-500 text-white'
-                : isProfit ? 'bg-green-500 text-white' : isLoss ? 'bg-pink-500 text-white' : 'bg-purple-500 text-white'
-            }`}>
+          <div style={{ position: 'absolute', top: '100px', left: '24px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              backgroundColor: isProfit ? '#22c55e' : isLoss ? '#ec4899' : '#a855f7',
+              color: 'white'
+            }}>
               {highlight.tokenTicker.charAt(0)}
             </div>
-            <span className={`text-xl font-semibold ${theme === 'candy' ? 'text-gray-700' : 'text-white'}`}>
+            <span style={{ fontSize: '20px', fontWeight: '600', color: 'white' }}>
               ${highlight.tokenTicker}
             </span>
           </div>
         )}
 
-        {/* Main value - Large and prominent (flex-grow to fill space) */}
-        <div className="flex-1 flex flex-col justify-center py-4">
+        {/* Main value - Large and prominent - centered vertically */}
+        <div style={{ position: 'absolute', top: '50%', left: '24px', right: '24px', transform: 'translateY(-50%)' }}>
           <div
             className={`font-black ${styles.valueClass}`}
             style={{
-              textShadow: theme !== 'candy' ? `0 0 30px currentColor` : 'none',
+              textShadow: '0 0 30px currentColor',
               fontSize: getValueFontSize(),
-              lineHeight: 1.1,
+              lineHeight: '1.1',
               wordBreak: 'break-word',
+              fontWeight: '900'
             }}
           >
             {highlight.value}
           </div>
-          <div className={`text-lg mt-2 font-medium ${styles.subtitleClass}`} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div className={styles.subtitleClass} style={{ fontSize: '18px', marginTop: '8px', fontWeight: '500', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {highlight.subtitle}
           </div>
         </div>
 
-        {/* Bottom section - Context & Branding (fixed height) */}
-        <div style={{ minHeight: '100px' }}>
-          <p className={`text-lg mb-4 ${styles.contextClass}`} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+        {/* Bottom section - Context & Branding */}
+        <div style={{ position: 'absolute', bottom: '24px', left: '24px', right: '24px' }}>
+          <p className={styles.contextClass} style={{
+            fontSize: '18px',
+            marginBottom: '16px',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: '2',
+            WebkitBoxOrient: 'vertical',
+            lineHeight: '1.4'
+          }}>
             {highlight.context}
           </p>
 
           {/* Branding footer */}
-          <div className={`flex justify-between items-center pt-4 border-t ${styles.borderClass}`}>
-            <div className={`text-xs font-mono ${theme === 'candy' ? 'text-purple-400' : 'text-gray-400'}`} style={{ maxWidth: '50%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingTop: '16px',
+            borderTop: `1px solid ${isProfit ? 'rgba(34, 197, 94, 0.3)' : isLoss ? 'rgba(239, 68, 68, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`
+          }}>
+            <div style={{ fontSize: '12px', fontFamily: 'monospace', color: '#9ca3af', maxWidth: '50%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {walletAddress.slice(0, 4)}...{walletAddress.slice(-4)}
             </div>
-            <div className="flex items-center gap-1">
-              <span className={`text-xs ${theme === 'candy' ? 'text-purple-400' : 'text-gray-400'}`}>powered by</span>
-              <span className={`font-bold text-sm ${styles.accentClass}`}>$WRAPPED</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ fontSize: '12px', color: '#9ca3af' }}>powered by</span>
+              <span className={styles.accentClass} style={{ fontWeight: 'bold', fontSize: '14px' }}>$WRAPPED</span>
             </div>
           </div>
         </div>
@@ -547,7 +402,6 @@ export default function HighlightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentCard, setCurrentCard] = useState(0);
-  const [theme, setTheme] = useState<Theme>('holographic');
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success' | 'error'>('idle');
   const [revealedCards, setRevealedCards] = useState<Set<number>>(new Set([0])); // Track which cards have been revealed (start with first card revealed)
   const [sparklingCard, setSparklingCard] = useState<number | null>(null); // Track which card is currently sparkling
@@ -563,7 +417,7 @@ export default function HighlightsPage() {
     const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
 
       const [summaryRes, highlightsRes] = await Promise.all([
         fetch(`${apiUrl}/api/wallet/${address}/summary`),
@@ -653,116 +507,30 @@ export default function HighlightsPage() {
 
     setCopyStatus('copying');
     try {
-      // Get the actual card element inside the wrapper
-      const cardElement = cardRef.current.querySelector('.pnl-card') || cardRef.current;
+      // Fetch the pre-rendered PNG from the server
+      const imageUrl = `/api/card/${address}/${currentCard}`;
+      const response = await fetch(imageUrl);
+      const blob = await response.blob();
 
-      const canvas = await html2canvas(cardElement as HTMLElement, {
-        backgroundColor: null,
-        scale: 3, // Higher quality for better rendering
-        useCORS: true,
-        allowTaint: true,
-        logging: false,
-        width: 400,
-        height: 520,
-        windowWidth: 400,
-        windowHeight: 520,
-        foreignObjectRendering: false,
-        imageTimeout: 0,
-        removeContainer: true,
-        onclone: (clonedDoc, clonedElement) => {
-          const clonedCard = clonedDoc.querySelector('.pnl-card') as HTMLElement;
-          if (clonedCard) {
-            // Set explicit dimensions
-            clonedCard.style.width = '400px';
-            clonedCard.style.height = '520px';
-            clonedCard.style.minHeight = '520px';
-            clonedCard.style.maxWidth = '400px';
-            clonedCard.style.position = 'relative';
-            clonedCard.style.overflow = 'hidden';
-
-            // Get computed styles from original element
-            const originalCard = cardElement as HTMLElement;
-            const originalComputedStyle = window.getComputedStyle(originalCard);
-
-            // Copy all background-related styles from original
-            clonedCard.style.background = originalComputedStyle.background;
-            clonedCard.style.backgroundColor = originalComputedStyle.backgroundColor;
-            clonedCard.style.backgroundImage = originalComputedStyle.backgroundImage;
-            clonedCard.style.backgroundSize = originalComputedStyle.backgroundSize;
-            clonedCard.style.backgroundPosition = originalComputedStyle.backgroundPosition;
-            clonedCard.style.backgroundRepeat = originalComputedStyle.backgroundRepeat;
-            clonedCard.style.backgroundClip = originalComputedStyle.backgroundClip;
-            clonedCard.style.borderRadius = originalComputedStyle.borderRadius;
-
-            // Handle holographic border ::before pseudo-element
-            // Since html2canvas doesn't capture pseudo-elements, we need to create a real element
-            if (clonedCard.classList.contains('theme-holographic')) {
-              const beforePseudo = clonedDoc.createElement('div');
-              beforePseudo.style.cssText = `
-                content: '';
-                position: absolute;
-                inset: -2px;
-                background: linear-gradient(45deg, #ff0080, #ff8c00, #40e0d0, #ff0080, #7b68ee, #ff0080);
-                background-size: 400% 400%;
-                border-radius: inherit;
-                z-index: -1;
-                opacity: 0.8;
-                pointer-events: none;
-              `;
-              clonedCard.insertBefore(beforePseudo, clonedCard.firstChild);
-            }
-
-            // Force re-render of all child element backgrounds
-            const allElements = clonedCard.querySelectorAll('*');
-            allElements.forEach((el: Element) => {
-              const htmlEl = el as HTMLElement;
-              const originalEl = Array.from(originalCard.querySelectorAll('*')).find(
-                (origEl) => origEl.textContent === el.textContent && origEl.className === el.className
-              );
-
-              if (originalEl) {
-                const computedStyle = window.getComputedStyle(originalEl);
-                if (computedStyle.background && computedStyle.background !== 'rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box') {
-                  htmlEl.style.background = computedStyle.background;
-                }
-                if (computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none') {
-                  htmlEl.style.backgroundImage = computedStyle.backgroundImage;
-                }
-                if (computedStyle.color) {
-                  htmlEl.style.color = computedStyle.color;
-                }
-              }
-            });
-          }
-        },
-      });
-
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          setCopyStatus('error');
-          setTimeout(() => setCopyStatus('idle'), 2000);
-          return;
-        }
-
-        try {
-          await navigator.clipboard.write([
-            new ClipboardItem({ 'image/png': blob })
-          ]);
-          setCopyStatus('success');
-          setTimeout(() => setCopyStatus('idle'), 2000);
-        } catch {
-          // Fallback: download the image if clipboard write fails
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `wrapped-${address.slice(0, 8)}-${currentCard + 1}.png`;
-          a.click();
-          URL.revokeObjectURL(url);
-          setCopyStatus('success');
-          setTimeout(() => setCopyStatus('idle'), 2000);
-        }
-      }, 'image/png');
-    } catch {
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': blob })
+        ]);
+        setCopyStatus('success');
+        setTimeout(() => setCopyStatus('idle'), 2000);
+      } catch {
+        // Fallback: download the image if clipboard write fails
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `wrapped-${address.slice(0, 8)}-${currentCard + 1}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setCopyStatus('success');
+        setTimeout(() => setCopyStatus('idle'), 2000);
+      }
+    } catch (error) {
+      console.error('Failed to copy image:', error);
       setCopyStatus('error');
       setTimeout(() => setCopyStatus('idle'), 2000);
     }
@@ -770,66 +538,23 @@ export default function HighlightsPage() {
 
   // Share card (opens share dialog or shares to X)
   const shareCard = async () => {
-    if (!cardRef.current || !data) return;
+    if (!data) return;
 
     const highlight = data.highlights[currentCard];
-    const shareText = `My 2024 Solana Wrapped: ${highlight.title} - ${highlight.value}\n\nCheck your wallet at walletwrapped.xyz`;
+    const shareText = `My 2025 Solana Wrapped: ${highlight.title} - ${highlight.value}\n\nCheck your wallet at walletwrapped.xyz`;
 
     // Check if native share is available
     if (navigator.share) {
       try {
-        // Get the actual card element inside the wrapper
-        const cardElement = cardRef.current.querySelector('.pnl-card') || cardRef.current;
-
-        const canvas = await html2canvas(cardElement as HTMLElement, {
-          backgroundColor: null,
-          scale: 3,
-          useCORS: true,
-          allowTaint: true,
-          logging: false,
-          width: 400,
-          height: 520,
-          windowWidth: 400,
-          windowHeight: 520,
-          foreignObjectRendering: false,
-          imageTimeout: 0,
-          removeContainer: true,
-          onclone: (clonedDoc) => {
-            const clonedCard = clonedDoc.querySelector('.pnl-card') as HTMLElement;
-            if (clonedCard) {
-              clonedCard.style.width = '400px';
-              clonedCard.style.height = '520px';
-              clonedCard.style.minHeight = '520px';
-              clonedCard.style.maxWidth = '400px';
-              clonedCard.style.position = 'relative';
-              clonedCard.style.overflow = 'hidden';
-
-              // Force re-render of backgrounds and gradients
-              const allElements = clonedCard.querySelectorAll('*');
-              allElements.forEach((el: Element) => {
-                const htmlEl = el as HTMLElement;
-                const computedStyle = window.getComputedStyle(el);
-
-                // Preserve background styles
-                if (computedStyle.background) {
-                  htmlEl.style.background = computedStyle.background;
-                }
-                if (computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none') {
-                  htmlEl.style.backgroundImage = computedStyle.backgroundImage;
-                }
-              });
-            }
-          },
-        });
-
-        const blob = await new Promise<Blob>((resolve) => {
-          canvas.toBlob((b) => resolve(b!), 'image/png');
-        });
+        // Fetch the pre-rendered PNG from the server
+        const imageUrl = `/api/card/${address}/${currentCard}`;
+        const response = await fetch(imageUrl);
+        const blob = await response.blob();
 
         const file = new File([blob], 'wrapped.png', { type: 'image/png' });
 
         await navigator.share({
-          title: 'My 2024 Solana Wrapped',
+          title: 'My 2025 Solana Wrapped',
           text: shareText,
           files: [file],
         });
@@ -860,13 +585,15 @@ export default function HighlightsPage() {
 
   if (loading) {
     return (
-      <main className="min-h-screen flex items-center justify-center bg-dark-900">
-        <div className="text-center">
+      <main className="min-h-screen flex items-center justify-center bg-dark-950 relative overflow-hidden">
+        <Fireworks />
+        <div className="absolute inset-0 bg-gradient-radial from-dark-800/30 via-dark-950 to-dark-950" />
+        <div className="text-center relative z-10">
           <div className="text-festive-gold mb-6 animate-bounce flex justify-center">
             <Icons.firework />
           </div>
           <div className="spinner w-16 h-16 mx-auto mb-4"></div>
-          <p className="text-gray-400">Unwrapping your 2024...</p>
+          <p className="text-gray-400">Unwrapping your 2025...</p>
         </div>
       </main>
     );
@@ -874,8 +601,10 @@ export default function HighlightsPage() {
 
   if (error) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-4 bg-dark-900">
-        <div className="max-w-md w-full">
+      <main className="min-h-screen flex items-center justify-center px-4 bg-dark-950 relative overflow-hidden">
+        <Fireworks />
+        <div className="absolute inset-0 bg-gradient-radial from-dark-800/30 via-dark-950 to-dark-950" />
+        <div className="max-w-md w-full relative z-10">
           <div className="card border-loss-500">
             <div className="text-center">
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-loss-500/10 flex items-center justify-center">
@@ -883,7 +612,7 @@ export default function HighlightsPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <h2 className="text-2xl font-bold mb-2">Error Loading Highlights</h2>
+              <h2 className="text-2xl font-bold mb-2 text-white">Error Loading Highlights</h2>
               <p className="text-gray-400 mb-6">{error}</p>
               <Link href="/" className="btn-primary">
                 Try Another Wallet
@@ -897,14 +626,16 @@ export default function HighlightsPage() {
 
   if (!data || data.highlights.length === 0) {
     return (
-      <main className="min-h-screen flex items-center justify-center px-4 bg-dark-900">
-        <div className="max-w-md w-full">
+      <main className="min-h-screen flex items-center justify-center px-4 bg-dark-950 relative overflow-hidden">
+        <Fireworks />
+        <div className="absolute inset-0 bg-gradient-radial from-dark-800/30 via-dark-950 to-dark-950" />
+        <div className="max-w-md w-full relative z-10">
           <div className="card">
             <div className="text-center">
               <div className="text-gray-500 mb-4 flex justify-center">
                 <Icons.chart />
               </div>
-              <h2 className="text-2xl font-bold mb-2">No Highlights Found</h2>
+              <h2 className="text-2xl font-bold mb-2 text-white">No Highlights Found</h2>
               <p className="text-gray-400 mb-6">
                 This wallet doesn't have enough trading activity to generate highlights.
               </p>
@@ -921,7 +652,13 @@ export default function HighlightsPage() {
   const highlight = data.highlights[currentCard];
 
   return (
-    <main className="min-h-screen py-8 px-4 bg-dark-900">
+    <main className="min-h-screen py-8 px-4 bg-dark-950 relative overflow-hidden">
+      {/* Fireworks background effect */}
+      <Fireworks />
+
+      {/* Dark gradient background */}
+      <div className="absolute inset-0 bg-gradient-radial from-dark-800/30 via-dark-950 to-dark-950" />
+
       {/* Toast Notification */}
       {copyStatus === 'success' && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-slide-down">
@@ -944,42 +681,27 @@ export default function HighlightsPage() {
         </div>
       )}
 
-      {/* Background decorations */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-0 left-1/4 w-96 h-96 bg-festive-purple/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-festive-pink/10 rounded-full blur-3xl" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-festive-gold/5 rounded-full blur-3xl" />
-      </div>
+      {/* Subtle ambient glow orbs - matching landing page */}
+      <div className="absolute top-20 left-1/4 w-[500px] h-[500px] bg-festive-gold/5 rounded-full blur-[100px]" />
+      <div className="absolute bottom-20 right-1/4 w-[400px] h-[400px] bg-festive-pink/5 rounded-full blur-[100px]" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/5 rounded-full blur-[120px]" />
 
       <div className="max-w-lg mx-auto relative z-10">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="text-festive-gold mb-2 flex justify-center">
-            <Icons.firework />
-          </div>
-          <h1 className="text-3xl font-bold mb-2 text-festive-gold">Your 2024 Wrapped</h1>
-          <p className="text-gray-400 text-sm font-mono">{address.slice(0, 8)}...{address.slice(-8)}</p>
+        {/* Header with logo and counter */}
+        <div className="flex items-center justify-between mb-6">
+          <Link href="/" className="hover:opacity-80 transition-opacity">
+            <Logo size="small" />
+          </Link>
+          <WalletCounter variant="compact" showActive={true} />
         </div>
 
-        {/* Theme Selector */}
-        <div className="flex justify-center gap-2 mb-6">
-          {(Object.keys(themeInfo) as Theme[]).map((t) => {
-            const ThemeIcon = themeInfo[t].icon;
-            return (
-              <button
-                key={t}
-                onClick={() => setTheme(t)}
-                className={`px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 flex items-center gap-1.5 ${
-                  theme === t
-                    ? 'bg-white/20 text-white ring-2 ring-white/50'
-                    : 'bg-dark-800 text-gray-400 hover:bg-dark-700 hover:text-white'
-                }`}
-              >
-                <ThemeIcon />
-                {themeInfo[t].name}
-              </button>
-            );
-          })}
+        {/* Page Title */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold mb-2">
+            <span className="text-white">Your </span>
+            <span className="festive-gradient-text">2025 Wrapped</span>
+          </h1>
+          <p className="text-gray-400 text-sm font-mono">{address.slice(0, 8)}...{address.slice(-8)}</p>
         </div>
 
         {/* Card Counter */}
@@ -988,10 +710,22 @@ export default function HighlightsPage() {
           <span className="text-gray-500"> / {data.highlights.length}</span>
         </div>
 
-        {/* PNL Card - wrapped with theme class */}
-        <div ref={cardRef} className={`theme-${theme} mb-4 relative`}>
-          <PNLCard highlight={highlight} walletAddress={address} theme={theme} />
-          {/* Sparkle effect on card reveal */}
+        {/* PNL Card - Server-generated PNG */}
+        <div className="mb-4 relative">
+          <div ref={cardRef} style={{ width: '400px', height: '520px', margin: '0 auto' }}>
+            <img
+              src={`/api/card/${address}/${currentCard}`}
+              alt={`${highlight.title} card`}
+              style={{
+                width: '400px',
+                height: '520px',
+                borderRadius: '16px',
+                display: 'block',
+              }}
+              draggable={false}
+            />
+          </div>
+          {/* Sparkle effect on card reveal - outside card ref to avoid capture */}
           {sparklingCard === currentCard && (
             <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-2xl">
               {/* Corner bursts */}

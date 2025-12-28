@@ -372,6 +372,10 @@ class PNLCalculator {
     // Calculate estimated realized P&L
     const estimatedPnl = estimatedValue - totalCostBasis;
 
+    // Store P&L on the trade for daily tracking
+    tx.realizedPnl = estimatedPnl;
+    tx.costBasis = totalCostBasis;
+
     // Update position
     position.realizedPNL += estimatedPnl;
     position.solReceived += estimatedValue;
@@ -436,8 +440,10 @@ class PNLCalculator {
 
     // Only count sells/transfers for daily P&L
     if (tx.type === 'SELL' || tx.type === 'TRANSFER_OUT') {
-      // This is simplified - actual realized PNL is calculated in processSell
-      // We'll need to pass the calculated PNL from there
+      // Add realized P&L from this transaction (calculated in processSell/processTransferOut)
+      if (tx.realizedPnl !== undefined && tx.realizedPnl !== null) {
+        dailyPNL[date].realizedPNLSol += tx.realizedPnl;
+      }
       dailyPNL[date].transactionCount++;
       dailyPNL[date].tokensTraded.add(tx.tokenMint);
     }

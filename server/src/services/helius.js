@@ -448,16 +448,17 @@ class HeliusService {
     }
 
     // Calculate WSOL in/out
+    // CRITICAL: WSOL tokenAmount is in raw format (lamports), must divide by 1e9 to get SOL
     let wsolIn = 0;  // WSOL leaving wallet
     let wsolOut = 0; // WSOL entering wallet
 
     const wsolTransfers = tokenTransfers.filter(t => t.mint === SOL_MINT);
     for (const transfer of wsolTransfers) {
       if (transfer.fromUserAccount === walletAddress) {
-        wsolIn += transfer.tokenAmount;
+        wsolIn += transfer.tokenAmount / 1e9; // Convert lamports to SOL
       }
       if (transfer.toUserAccount === walletAddress) {
-        wsolOut += transfer.tokenAmount;
+        wsolOut += transfer.tokenAmount / 1e9; // Convert lamports to SOL
       }
     }
 
