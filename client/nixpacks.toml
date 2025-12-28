@@ -2,14 +2,10 @@
 nixPkgs = ["nodejs_20"]
 
 [phases.install]
-cmds = ["npm ci || npm install"]
+cmds = ["npm install --ignore-workspaces"]
 
 [phases.build]
 cmds = ["npm run build"]
 
 [start]
 cmd = "npm start"
-
-[variables]
-NPM_CONFIG_PRODUCTION = "false"
-NIXPACKS_NO_WORKSPACE = "1"
