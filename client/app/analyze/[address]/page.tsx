@@ -186,7 +186,7 @@ export default function AnalyzePage() {
     startAnalysis();
     setStartTime(Date.now());
 
-    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3003';
+    const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
     const newSocket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       reconnectionAttempts: 5,
@@ -255,7 +255,7 @@ export default function AnalyzePage() {
 
   const startAnalysis = async () => {
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
       // First, fetch CSRF token
       const csrfResponse = await fetch(`${apiUrl}/api/csrf-token`, {

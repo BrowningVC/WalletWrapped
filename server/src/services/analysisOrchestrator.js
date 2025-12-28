@@ -324,7 +324,7 @@ async function runAnalysis(walletAddress, incremental = false) {
     }
     console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress}`);
 
-    await emitProgress(walletAddress, 100, 'Analysis complete!');
+    await emitProgress(walletAddress, 100, 'Analysis complete!', txDetails);
 
     // Update database status to completed
     await DatabaseQueries.updateAnalysisProgress(walletAddress, 'completed', 100, 'Analysis complete!');

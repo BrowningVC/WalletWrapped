@@ -437,7 +437,7 @@ export default function HighlightsPage() {
       const retryDelay = Math.min(1000 * Math.pow(2, retryCount), 5000); // Exponential backoff, max 5s
 
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
         const [summaryRes, highlightsRes] = await Promise.all([
           fetch(`${apiUrl}/api/wallet/${address}/summary`, { signal: abortController.signal }),

@@ -21,7 +21,7 @@ export default function WalletCounter({ variant = 'default', showActive = false 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
         const response = await fetch(`${apiUrl}/api/stats`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache' }

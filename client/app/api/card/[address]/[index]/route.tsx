@@ -152,7 +152,7 @@ export async function GET(
     const { address, index } = await params;
     const cardIndex = parseInt(index, 10);
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
     // Try to get pre-generated card from server cache first (instant!)
     try {

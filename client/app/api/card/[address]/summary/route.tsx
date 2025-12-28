@@ -116,7 +116,7 @@ export async function GET(
 ) {
   try {
     const { address } = await params;
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3003';
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
 
     // Try to get pre-generated summary card from server cache first (instant!)
     try {
