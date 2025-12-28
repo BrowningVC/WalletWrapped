@@ -247,30 +247,33 @@ class DatabaseQueries {
     });
   }
 
-  static async getPositions(walletAddress) {
+  static async getPositions(walletAddress, limit = 10000, offset = 0) {
     const result = await query(
       `SELECT * FROM token_positions
        WHERE wallet_address = $1
-       ORDER BY realized_pnl_sol DESC`,
-      [walletAddress]
+       ORDER BY realized_pnl_sol DESC
+       LIMIT $2 OFFSET $3`,
+      [walletAddress, limit, offset]
     );
     return result.rows;
   }
 
-  static async getActivePositions(walletAddress) {
+  static async getActivePositions(walletAddress, limit = 10000, offset = 0) {
     const result = await query(
       `SELECT * FROM token_positions
        WHERE wallet_address = $1 AND is_active = true
-       ORDER BY unrealized_pnl_sol DESC`,
-      [walletAddress]
+       ORDER BY unrealized_pnl_sol DESC
+       LIMIT $2 OFFSET $3`,
+      [walletAddress, limit, offset]
     );
     return result.rows;
   }
 
   /**
    * Get all transactions for a wallet, optionally filtered by token mint
+   * IMPORTANT: Use limit/offset for large wallets to prevent OOM
    */
-  static async getTransactions(walletAddress, tokenMint = null) {
+  static async getTransactions(walletAddress, tokenMint = null, limit = 50000, offset = 0) {
     let queryText = `SELECT * FROM transactions WHERE wallet_address = $1`;
     const params = [walletAddress];
 
@@ -279,7 +282,8 @@ class DatabaseQueries {
       params.push(tokenMint);
     }
 
-    queryText += ` ORDER BY block_time ASC`;
+    queryText += ` ORDER BY block_time ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(limit, offset);
 
     const result = await query(queryText, params);
     return result.rows;

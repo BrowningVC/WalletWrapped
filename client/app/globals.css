@@ -183,6 +183,7 @@
   border-radius: inherit;
   z-index: -1;
   opacity: 0.8;
+  animation: holographic-border 6s ease infinite;
 }
 
 .theme-holographic .pnl-card-profit {
@@ -319,9 +320,9 @@
 }
 
 .theme-candy .pnl-card .text-white { color: #2d3436 !important; }
-.theme-candy .pnl-card .text-gray-300 { color: #636e72 !important; }
-.theme-candy .pnl-card .text-gray-400 { color: #74b9ff !important; }
-.theme-candy .pnl-card .text-gray-500 { color: #a29bfe !important; }
+.theme-candy .pnl-card .text-gray-300 { color: #2d3436 !important; }
+.theme-candy .pnl-card .text-gray-400 { color: #636e72 !important; }
+.theme-candy .pnl-card .text-gray-500 { color: #636e72 !important; }
 
 .theme-candy .accent-text { color: #fd79a8; }
 .theme-candy .sparkle-color { color: #fdcb6e; }
@@ -331,6 +332,16 @@
 
 /* Remove dark overlay for candy theme */
 .theme-candy .pnl-card .bg-gradient-to-t { display: none; }
+
+/* Holographic border animation */
+@keyframes holographic-border {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
 
 /* Confetti particle */
 .confetti {

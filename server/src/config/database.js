@@ -2,14 +2,14 @@ const { Pool } = require('pg');
 require('dotenv').config();
 
 // Optimized connection pool configuration for 50+ concurrent analyses
-// Each analysis uses ~2-4 connections, so 100 max supports 25-50 concurrent
+// Phase 2 optimization: Increased warm connections and query timeout
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   max: 100,                     // Maximum connections (increased for concurrency)
-  min: 10,                      // Minimum idle connections
+  min: 20,                      // Keep more connections warm (2x increase)
   idleTimeoutMillis: 30000,     // Close idle connections after 30s
   connectionTimeoutMillis: 10000, // 10s to acquire connection
-  statement_timeout: 60000,     // 60s max per query (large batch inserts need time)
+  statement_timeout: 120000,    // 2 minutes for large batch inserts (30k txs)
   application_name: 'walletwrapped'
 });
 
@@ -64,15 +64,15 @@ async function transaction(callback) {
 }
 
 // Batch insert helper (for performance)
-// Processes batches in parallel for speed
-async function batchInsert(table, columns, values, batchSize = 500) {
+// Phase 2 optimization: Larger batches with more parallelism
+async function batchInsert(table, columns, values, batchSize = 1000) {
   const batches = [];
   for (let i = 0; i < values.length; i += batchSize) {
     batches.push(values.slice(i, i + batchSize));
   }
 
   // Process batches in parallel (pool handles connection management)
-  const PARALLEL_BATCHES = 5; // Insert 5 batches concurrently
+  const PARALLEL_BATCHES = 10; // Insert 10 batches concurrently (2x increase)
   const results = [];
 
   for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {

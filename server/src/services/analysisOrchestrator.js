@@ -17,8 +17,36 @@ const RateLimiter = require('../utils/rateLimiter');
 // Track active analyses for cancellation support
 const activeAnalyses = new Map(); // walletAddress -> { abortController, startTime }
 
+// Constants for cleanup
+// With 30k tx limit: ~40 minutes max + 5 minute buffer = 45 minutes
+const MAX_ANALYSIS_DURATION = parseInt(process.env.MAX_ANALYSIS_DURATION) || 45 * 60 * 1000; // 45 minutes max
+const CLEANUP_INTERVAL = 10 * 60 * 1000; // Check for stale entries every 10 minutes
+
 // Socket.io instance (set by server)
 let io = null;
+
+// Periodic cleanup of stale entries
+setInterval(() => {
+  const now = Date.now();
+  let cleanedCount = 0;
+
+  for (const [address, data] of activeAnalyses.entries()) {
+    const age = now - data.startTime;
+    if (age > MAX_ANALYSIS_DURATION) {
+      console.warn(`Cleaning up stale analysis entry: ${address} (age: ${Math.round(age / 1000 / 60)}min)`);
+      activeAnalyses.delete(address);
+      // Release lock without awaiting to prevent blocking
+      RateLimiter.releaseDuplicateLock(address).catch(err =>
+        console.error(`Failed to release lock for ${address}:`, err)
+      );
+      cleanedCount++;
+    }
+  }
+
+  if (cleanedCount > 0) {
+    console.log(`Cleaned up ${cleanedCount} stale analysis entries`);
+  }
+}, CLEANUP_INTERVAL);
 
 /**
  * Set Socket.io instance for progress updates
@@ -125,6 +153,16 @@ async function runAnalysis(walletAddress, incremental = false) {
 
   // Track this analysis for cancellation support
   activeAnalyses.set(walletAddress, { abortController, startTime });
+
+  // Safety timeout - force cleanup after max duration
+  const cleanupTimeout = setTimeout(() => {
+    console.error(`Analysis timeout for ${walletAddress}, forcing cleanup`);
+    abortController.abort();
+    activeAnalyses.delete(walletAddress);
+    RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
+      console.error(`Timeout cleanup lock release failed:`, err)
+    );
+  }, MAX_ANALYSIS_DURATION);
 
   try {
     console.log(`\n========================================`);
@@ -274,9 +312,12 @@ async function runAnalysis(walletAddress, incremental = false) {
     throw error;
 
   } finally {
-    // Always clean up
+    // Always clean up: clear timeout first, then remove from tracking
+    clearTimeout(cleanupTimeout);
     activeAnalyses.delete(walletAddress);
-    await RateLimiter.releaseDuplicateLock(walletAddress);
+    await RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
+      console.error(`Finally block lock release failed for ${walletAddress}:`, err)
+    );
   }
 }
 

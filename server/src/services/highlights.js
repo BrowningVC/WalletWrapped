@@ -9,8 +9,10 @@ const DatabaseQueries = require('../database/queries');
  * v2 - Reduced to 6 key highlights with pre-formatted values
  * v3 - Added fallbacks for all highlights, changed Overall P&L to total (realized+unrealized)
  * v4 - Excluded stablecoins from biggest win/loss calculations
+ * v5 - Changed decimal precision from 2-4 decimals to 1 decimal place for all values
+ * v6 - Updated best profit day fallback message to "Never a profitable day? Sheesh!"
  */
-const HIGHLIGHTS_VERSION = 4;
+const HIGHLIGHTS_VERSION = 6;
 
 // Stablecoins and wrapped tokens to exclude from win/loss calculations
 // These are used for swapping, not trading
@@ -84,8 +86,8 @@ class HighlightsGenerator {
       type: 'overall_pnl',
       title: 'Overall P&L',
       description: `Your total profit/loss (realized + unrealized)`,
-      valuePrimary: this.formatUsd(pnlUsd),
-      valueSecondary: `(${this.formatSol(pnlSol)} SOL)`,
+      valuePrimary: this.roundUsd(pnlUsd), // Numeric value for database
+      valueSecondary: this.roundSol(pnlSol), // Numeric value for database
       metadata: {
         pnlSol: this.roundSol(pnlSol),
         pnlUsd: this.roundUsd(pnlUsd),
@@ -93,7 +95,9 @@ class HighlightsGenerator {
         unrealizedPnlSol: this.roundSol(summary.totalUnrealizedPNL),
         isProfit: pnlSol >= 0,
         closedPositions: summary.closedPositions,
-        activePositions: summary.activePositions
+        activePositions: summary.activePositions,
+        formattedPrimary: this.formatUsd(pnlUsd), // Formatted string for display
+        formattedSecondary: `(${this.formatSol(pnlSol)} SOL)`
       }
     };
   }
@@ -121,14 +125,16 @@ class HighlightsGenerator {
         type: 'biggest_win',
         title: 'Biggest Win',
         description: 'No profitable trades yet - your first win is coming!',
-        valuePrimary: '$0',
-        valueSecondary: '(0 SOL)',
+        valuePrimary: 0, // Numeric value
+        valueSecondary: 0, // Numeric value
         metadata: {
           tokenSymbol: null,
           tokenMint: null,
           pnlSol: 0,
           pnlUsd: 0,
-          noData: true
+          noData: true,
+          formattedPrimary: '$0',
+          formattedSecondary: '(0 SOL)'
         }
       };
     }
@@ -140,13 +146,15 @@ class HighlightsGenerator {
       type: 'biggest_win',
       title: 'Biggest Win',
       description: `Your most profitable token was ${winner.tokenSymbol}`,
-      valuePrimary: this.formatUsd(pnlUsd),
-      valueSecondary: `(${this.formatSol(pnlSol)} SOL)`,
+      valuePrimary: this.roundUsd(pnlUsd), // Numeric value
+      valueSecondary: this.roundSol(pnlSol), // Numeric value
       metadata: {
         tokenSymbol: winner.tokenSymbol,
         tokenMint: winner.tokenMint,
         pnlSol: this.roundSol(pnlSol),
-        pnlUsd: this.roundUsd(pnlUsd)
+        pnlUsd: this.roundUsd(pnlUsd),
+        formattedPrimary: this.formatUsd(pnlUsd),
+        formattedSecondary: `(${this.formatSol(pnlSol)} SOL)`
       }
     };
   }
@@ -165,14 +173,16 @@ class HighlightsGenerator {
         type: 'biggest_loss',
         title: 'Biggest Loss',
         description: 'No losses yet - keep up the winning streak!',
-        valuePrimary: '$0',
-        valueSecondary: '(0 SOL)',
+        valuePrimary: 0, // Numeric value
+        valueSecondary: 0, // Numeric value
         metadata: {
           tokenSymbol: null,
           tokenMint: null,
           pnlSol: 0,
           pnlUsd: 0,
-          noData: true
+          noData: true,
+          formattedPrimary: '$0',
+          formattedSecondary: '(0 SOL)'
         }
       };
     }
@@ -184,13 +194,15 @@ class HighlightsGenerator {
       type: 'biggest_loss',
       title: 'Biggest Loss',
       description: `Your biggest loss was on ${loser.tokenSymbol}`,
-      valuePrimary: this.formatUsd(pnlUsd),
-      valueSecondary: `(${this.formatSol(pnlSol)} SOL)`,
+      valuePrimary: this.roundUsd(pnlUsd), // Numeric value
+      valueSecondary: this.roundSol(pnlSol), // Numeric value
       metadata: {
         tokenSymbol: loser.tokenSymbol,
         tokenMint: loser.tokenMint,
         pnlSol: this.roundSol(pnlSol),
-        pnlUsd: this.roundUsd(pnlUsd)
+        pnlUsd: this.roundUsd(pnlUsd),
+        formattedPrimary: this.formatUsd(pnlUsd),
+        formattedSecondary: `(${this.formatSol(pnlSol)} SOL)`
       }
     };
   }
@@ -205,29 +217,35 @@ class HighlightsGenerator {
         type: 'win_rate',
         title: 'Win Rate',
         description: 'No completed trades yet - close a position to see your win rate',
-        valuePrimary: '0%',
-        valueSecondary: '0/0 wins',
+        valuePrimary: 0, // Numeric value
+        valueSecondary: 0, // Numeric value
         metadata: {
           winRate: 0,
           profitablePositions: 0,
           closedPositions: 0,
           grade: 'N/A',
-          noData: true
+          noData: true,
+          formattedPrimary: '0%',
+          formattedSecondary: '0/0 wins'
         }
       };
     }
 
+    const winRateValue = this.roundUsd(summary.winRate); // Round to 1 decimal place
+
     return {
       type: 'win_rate',
       title: 'Win Rate',
-      description: `${summary.winRate}% of your trades were profitable`,
-      valuePrimary: `${summary.winRate}%`,
-      valueSecondary: `${summary.profitablePositions}/${summary.closedPositions} wins`,
+      description: `${winRateValue}% of your trades were profitable`,
+      valuePrimary: winRateValue, // Numeric value (percentage as number, 1 DP)
+      valueSecondary: summary.profitablePositions, // Numeric value (count)
       metadata: {
-        winRate: summary.winRate,
+        winRate: winRateValue,
         profitablePositions: summary.profitablePositions,
         closedPositions: summary.closedPositions,
-        grade: this.getWinRateGrade(summary.winRate)
+        grade: this.getWinRateGrade(winRateValue),
+        formattedPrimary: `${winRateValue}%`,
+        formattedSecondary: `${summary.profitablePositions}/${summary.closedPositions} wins`
       }
     };
   }
@@ -275,15 +293,17 @@ class HighlightsGenerator {
         type: 'longest_hold',
         title: 'Diamond Hands',
         description: 'No completed holds yet - keep holding!',
-        valuePrimary: '0 days',
-        valueSecondary: 'N/A',
+        valuePrimary: 0, // Numeric value (days)
+        valueSecondary: 0, // Numeric value
         metadata: {
           tokenSymbol: null,
           tokenMint: null,
           holdDays: 0,
           buyDate: null,
           sellDate: null,
-          noData: true
+          noData: true,
+          formattedPrimary: '0 days',
+          formattedSecondary: 'N/A'
         }
       };
     }
@@ -292,14 +312,16 @@ class HighlightsGenerator {
       type: 'longest_hold',
       title: 'Diamond Hands',
       description: `You held ${longestHold.position.tokenSymbol} for ${maxDays} days before selling`,
-      valuePrimary: `${maxDays} days`,
-      valueSecondary: longestHold.position.tokenSymbol,
+      valuePrimary: maxDays, // Numeric value (days)
+      valueSecondary: maxDays, // Numeric value (also days, for consistency)
       metadata: {
         tokenSymbol: longestHold.position.tokenSymbol,
         tokenMint: longestHold.position.tokenMint,
         holdDays: maxDays,
         buyDate: longestHold.buyDate.toISOString(),
-        sellDate: longestHold.sellDate.toISOString()
+        sellDate: longestHold.sellDate.toISOString(),
+        formattedPrimary: `${maxDays} days`,
+        formattedSecondary: longestHold.position.tokenSymbol
       }
     };
   }
@@ -358,15 +380,17 @@ class HighlightsGenerator {
       return {
         type: 'best_profit_day',
         title: 'Best Day',
-        description: 'No profitable days yet - your best day is ahead!',
-        valuePrimary: '$0',
-        valueSecondary: '(0 SOL)',
+        description: 'Never a profitable day? Sheesh!',
+        valuePrimary: 0, // Numeric value
+        valueSecondary: 0, // Numeric value
         metadata: {
           date: null,
           profitSol: 0,
           profitUsd: 0,
           tokens: '',
-          noData: true
+          noData: true,
+          formattedPrimary: '$0',
+          formattedSecondary: '(0 SOL)'
         }
       };
     }
@@ -382,13 +406,15 @@ class HighlightsGenerator {
       type: 'best_profit_day',
       title: 'Best Day',
       description: `Your most profitable day was ${formattedDate}`,
-      valuePrimary: this.formatUsd(profitUsd),
-      valueSecondary: `(${this.formatSol(bestDay.profitSol)} SOL)`,
+      valuePrimary: this.roundUsd(profitUsd), // Numeric value
+      valueSecondary: this.roundSol(bestDay.profitSol), // Numeric value
       metadata: {
         date: bestDay.date,
         profitSol: this.roundSol(bestDay.profitSol),
         profitUsd: this.roundUsd(profitUsd),
-        tokens: bestDay.tokens.join(', ')
+        tokens: bestDay.tokens.join(', '),
+        formattedPrimary: this.formatUsd(profitUsd),
+        formattedSecondary: `(${this.formatSol(bestDay.profitSol)} SOL)`
       }
     };
   }
@@ -410,17 +436,17 @@ class HighlightsGenerator {
   }
 
   /**
-   * Helper: Round SOL to 4 decimals
+   * Helper: Round SOL to 1 decimal place
    */
   static roundSol(value) {
-    return Math.round(value * 10000) / 10000;
+    return Math.round(value * 10) / 10;
   }
 
   /**
-   * Helper: Round USD to 2 decimals
+   * Helper: Round USD to 1 decimal place
    */
   static roundUsd(value) {
-    return Math.round(value * 100) / 100;
+    return Math.round(value * 10) / 10;
   }
 
   /**

@@ -1,4 +1,9 @@
 require('dotenv').config();
+
+// Validate environment variables before anything else
+const { validateEnv } = require('./utils/envValidator');
+validateEnv();
+
 const cluster = require('cluster');
 const os = require('os');
 const express = require('express');
@@ -17,6 +22,10 @@ const DatabaseQueries = require('./database/queries');
 // Routes
 const analyzeRoutes = require('./routes/analyze');
 const walletRoutes = require('./routes/wallet');
+const monitorRoutes = require('./routes/monitor');
+
+// Middleware
+const { attachCSRFToken } = require('./middleware/csrf');
 
 // Socket.io handlers
 const { initializeSocketHandlers } = require('./socket/handlers');
@@ -54,10 +63,26 @@ const io = new Server(server, {
  * Middleware
  */
 
-// Security headers
+// Security headers with proper CSP
 app.use(helmet({
-  contentSecurityPolicy: false, // Allow embedding images
-  crossOriginEmbedderPolicy: false
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for Next.js
+      styleSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for Tailwind
+      imgSrc: ["'self'", "data:", "https:", "blob:"], // Allow external images
+      fontSrc: ["'self'", "data:"],
+      connectSrc: ["'self'", CLIENT_URL, "https://mainnet.helius-rpc.com", "https://api.helius.xyz"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      upgradeInsecureRequests: NODE_ENV === 'production' ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Keep disabled for external images
+  crossOriginResourcePolicy: { policy: "cross-origin" }, // Allow cross-origin resources
 }));
 
 // CORS
@@ -142,6 +167,14 @@ app.get('/health', async (req, res) => {
   }
 });
 
+// CSRF token endpoint - provides token for state-changing requests
+app.get('/api/csrf-token', attachCSRFToken, (req, res) => {
+  res.json({
+    message: 'CSRF token attached to X-CSRF-Token header',
+    expiresIn: 3600 // seconds
+  });
+});
+
 // API info
 app.get('/api', (req, res) => {
   res.json({
@@ -149,10 +182,13 @@ app.get('/api', (req, res) => {
     version: '1.0.0',
     description: 'Solana wallet analytics and trading highlights',
     endpoints: {
+      security: {
+        'GET /api/csrf-token': 'Get CSRF token for protected requests'
+      },
       analyze: {
-        'POST /api/analyze': 'Start wallet analysis',
+        'POST /api/analyze': 'Start wallet analysis (requires CSRF token)',
         'GET /api/analyze/:address/status': 'Get analysis status',
-        'DELETE /api/analyze/:address': 'Cancel analysis'
+        'DELETE /api/analyze/:address': 'Cancel analysis (requires CSRF token)'
       },
       wallet: {
         'GET /api/wallet/:address/summary': 'Get wallet summary',
@@ -214,6 +250,7 @@ app.get('/api/stats', async (req, res) => {
 // Mount API routes
 app.use('/api', analyzeRoutes);
 app.use('/api', walletRoutes);
+app.use('/api/monitor', monitorRoutes);
 
 // 404 handler
 app.use((req, res) => {
@@ -223,19 +260,22 @@ app.use((req, res) => {
   });
 });
 
-// Error handler
+// Error handler - NEVER leak internal details
 app.use((err, req, res, next) => {
+  // Log full error server-side for debugging
   console.error('Express error:', err);
 
   const status = err.status || 500;
-  const message = NODE_ENV === 'production'
-    ? 'Internal server error'
-    : err.message;
+
+  // SECURITY: Only expose error messages for client errors (4xx)
+  // NEVER expose internal server errors (5xx) or stack traces
+  const isClientError = status >= 400 && status < 500;
+  const message = isClientError ? err.message : 'Internal server error';
 
   res.status(status).json({
-    error: err.name || 'Error',
-    message,
-    ...(NODE_ENV === 'development' && { stack: err.stack })
+    error: isClientError ? (err.name || 'Error') : 'Error',
+    message
+    // NEVER include stack traces in any response
   });
 });
 
@@ -295,7 +335,8 @@ async function startServer() {
     console.log(`\n✨ Ready to analyze wallets!\n`);
 
     // Run cleanup of stale processing analyses every 2 minutes
-    setInterval(async () => {
+    // IMPORTANT: Store interval ID for cleanup on shutdown
+    global.cleanupInterval = setInterval(async () => {
       try {
         await DatabaseQueries.cleanupStaleProcessing();
       } catch (error) {
@@ -316,6 +357,13 @@ async function startServer() {
 
 async function gracefulShutdown(signal) {
   console.log(`\n${signal} received, shutting down gracefully...`);
+
+  // Clear cleanup interval FIRST to prevent new cleanup tasks
+  if (global.cleanupInterval) {
+    clearInterval(global.cleanupInterval);
+    global.cleanupInterval = null;
+    console.log('✓ Cleanup interval stopped');
+  }
 
   // Stop accepting new connections
   server.close(async () => {
@@ -403,3 +451,4 @@ if (require.main === module) {
 }
 
 module.exports = { app, server, io };
+

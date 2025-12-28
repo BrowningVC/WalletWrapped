@@ -152,15 +152,17 @@ class RateLimiter {
 
   /**
    * Global rate limiting stats
+   * Uses SCAN instead of KEYS for production safety (non-blocking)
    */
   static async getStats() {
     try {
-      const keys = await redis.redis.keys('ratelimit:*');
-      const locks = await redis.redis.keys('lock:*');
+      // Use SCAN for non-blocking iteration
+      const rateLimitKeys = await this.scanKeys('ratelimit:*');
+      const lockKeys = await this.scanKeys('lock:*');
 
       return {
-        activeRateLimits: keys.length,
-        activeLocks: locks.length,
+        activeRateLimits: rateLimitKeys.length,
+        activeLocks: lockKeys.length,
         timestamp: new Date().toISOString()
       };
     } catch (error) {
@@ -169,11 +171,31 @@ class RateLimiter {
   }
 
   /**
+   * Scan Redis keys using SCAN command (production-safe, non-blocking)
+   * @param {string} pattern - Key pattern to match (e.g., 'ratelimit:*')
+   * @returns {Promise<string[]>} Array of matching keys
+   */
+  static async scanKeys(pattern) {
+    const keys = [];
+    let cursor = '0';
+
+    do {
+      // SCAN returns [nextCursor, keys]
+      const result = await redis.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = result[0];
+      keys.push(...result[1]);
+    } while (cursor !== '0');
+
+    return keys;
+  }
+
+  /**
    * Clear all rate limits (admin only)
+   * Uses SCAN instead of KEYS for production safety
    */
   static async clearAll() {
     try {
-      const keys = await redis.redis.keys('ratelimit:*');
+      const keys = await this.scanKeys('ratelimit:*');
       if (keys.length > 0) {
         await redis.redis.del(...keys);
       }

@@ -2,9 +2,10 @@ const { PublicKey } = require('@solana/web3.js');
 const redis = require('../config/redis');
 require('dotenv').config();
 
-// Helius API base URL
+// Helius API base URL with API key
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const HELIUS_API_URL = `https://api.helius.xyz/v0`;
-const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`;
+const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
 
 /**
  * Semaphore for controlling concurrent Helius API requests
@@ -61,11 +62,13 @@ const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
  */
 async function heliusPostRequest(endpoint, body = {}) {
   return heliusSemaphore.run(async () => {
-    const url = `${HELIUS_API_URL}${endpoint}?api-key=${process.env.HELIUS_API_KEY}`;
+    const url = `${HELIUS_API_URL}${endpoint}?api-key=${HELIUS_API_KEY}`;
 
     const response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify(body)
     });
 
@@ -90,7 +93,9 @@ async function heliusRPC(method, params) {
   return heliusSemaphore.run(async () => {
     const response = await fetch(HELIUS_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json'
+      },
       body: JSON.stringify({
         jsonrpc: '2.0',
         id: 1,
@@ -122,16 +127,29 @@ const ENHANCED_TX_BATCH_SIZE = 100; // Helius Enhanced Transactions API limit
 
 // Scale parallelism based on RPS limit
 // Free (10 RPS): 2 parallel batches
-// Paid (50+ RPS): 20 parallel batches (fetches 2000 txs per round)
+// Paid (50+ RPS): 40 parallel batches (fetches 4000 txs per round)
 // This is aggressive but the semaphore will throttle if needed
-const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 50 ? 20 : 2;
-const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 50 ? 10 : 3;
+const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 50 ? 40 : 2;
+const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 50 ? 15 : 3;
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 500ms base delay
 
 // Solana native mint (SOL)
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+// Common stablecoins on Solana (used as trading pairs, not P&L assets)
+const STABLECOINS = new Set([
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+  '7dHbWXmci3dT8UFYWYZweBLXgycu7Y3iL6trKn1Y7ARj', // stSOL (consider as stable for P&L)
+  'mSoLzYCxHdYgdzU16g5QSh3i5K3z3KZK7ytfqcJm7So',  // mSOL (consider as stable for P&L)
+  'So11111111111111111111111111111111111111112',  // WSOL (wrapped SOL)
+]);
+
+// In-memory metadata cache for faster lookups during analysis
+// Reduces redundant API calls for frequently-seen tokens
+const metadataCache = new Map();
 
 /**
  * Helius Service - Handles all Solana blockchain data fetching via Helius API
@@ -152,8 +170,10 @@ class HeliusService {
   /**
    * Fetch all signatures for a wallet (fast, no transaction details)
    * Returns array of signature strings
+   * Enforces MAX_TRANSACTION_LIMIT to prevent bot wallet analysis
    */
   static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
+    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 1000;
     const allSignatures = [];
     let beforeSignature = null;
 
@@ -175,6 +195,15 @@ class HeliusService {
 
       // Report progress during signature collection
       progressCallback(0, allSignatures.length, 'counting');
+
+      // Check if we've exceeded the transaction limit (anti-bot protection)
+      if (allSignatures.length > MAX_TRANSACTION_LIMIT) {
+        throw new Error(
+          `This wallet has ${allSignatures.length}+ transactions, exceeding our limit of ${MAX_TRANSACTION_LIMIT}. ` +
+          `This appears to be a bot wallet. WalletWrapped is designed for human traders only. ` +
+          `If you believe this is an error, please contact support.`
+        );
+      }
 
       // If we got fewer than the batch size, we've reached the end
       if (response.length < SIGNATURE_BATCH_SIZE) {
@@ -303,7 +332,7 @@ class HeliusService {
 
   /**
    * Classify transaction type based on Helius data
-   * CRITICAL: Filters out SOL-only transfers
+   * CRITICAL: Filters out SOL-only transfers and stablecoin-only swaps
    */
   static classifyTransaction(heliusTx, walletAddress) {
     const nativeTransfers = heliusTx.nativeTransfers || [];
@@ -314,9 +343,19 @@ class HeliusService {
       return { type: 'SOL_TRANSFER', skip: true };
     }
 
-    // Find non-SOL token transfers (the actual meme coins)
-    const nonSolTokenTransfers = tokenTransfers.filter(t =>
-      t.tokenStandard === 'Fungible' && t.mint !== SOL_MINT
+    // PRIORITY 2: Filter out stablecoin-only transactions
+    // These are just trading pairs (USDC swaps), not real P&L events
+    const nonStablecoinTransfers = tokenTransfers.filter(t =>
+      !STABLECOINS.has(t.mint)
+    );
+
+    if (nonStablecoinTransfers.length === 0) {
+      return { type: 'STABLECOIN_ONLY', skip: true };
+    }
+
+    // Find non-SOL, non-stablecoin token transfers (the actual trading assets)
+    const nonSolTokenTransfers = nonStablecoinTransfers.filter(t =>
+      t.tokenStandard === 'Fungible' && t.mint !== SOL_MINT && !STABLECOINS.has(t.mint)
     );
 
     // CRITICAL: Find the token transfer that involves THIS wallet specifically
@@ -476,12 +515,19 @@ class HeliusService {
   }
 
   /**
-   * Get token metadata from Helius (with Redis cache)
+   * Get token metadata from Helius (with in-memory + Redis cache)
    */
   static async getTokenMetadata(mint) {
-    // Check cache first
+    // Check in-memory cache first (fastest)
+    if (metadataCache.has(mint)) {
+      return metadataCache.get(mint);
+    }
+
+    // Check Redis cache second
     const cached = await redis.get(`token:${mint}:metadata`);
     if (cached) {
+      // Populate in-memory cache for next time
+      metadataCache.set(mint, cached);
       return cached;
     }
 
@@ -489,7 +535,10 @@ class HeliusService {
       // Use Helius DAS API for asset metadata
       const response = await fetch(HELIUS_RPC_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.HELIUS_API_KEY}`
+        },
         body: JSON.stringify({
           jsonrpc: '2.0',
           id: 1,
@@ -509,8 +558,9 @@ class HeliusService {
         supply: metadata?.token_info?.supply || 0
       };
 
-      // Cache for 7 days
+      // Cache in both Redis (7 days) and in-memory
       await redis.setex(`token:${mint}:metadata`, 604800, info);
+      metadataCache.set(mint, info);
       return info;
 
     } catch (error) {

@@ -134,6 +134,8 @@ interface HighlightMetadata {
   monthPNL?: number;
   isProfit?: boolean;
   noData?: boolean;
+  profitablePositions?: number;
+  closedPositions?: number;
 }
 
 interface ServerHighlight {
@@ -197,8 +199,62 @@ function transformHighlight(serverHighlight: ServerHighlight): Highlight {
   }
 
   const tokenTicker = serverHighlight.metadata?.tokenSymbol || undefined;
-  const value = String(serverHighlight.valuePrimary);
-  const subtitle = String(serverHighlight.valueSecondary || '');
+
+  // Format values with appropriate units based on highlight type
+  let value = String(serverHighlight.valuePrimary);
+  let subtitle = String(serverHighlight.valueSecondary || '');
+
+  // Add units to values for better UX
+  switch (serverHighlight.type) {
+    case 'overall_pnl':
+    case 'biggest_win':
+    case 'biggest_loss':
+    case 'best_profit_day':
+      // Financial values: Primary is USD, Secondary is SOL
+      if (!value.includes('$')) {
+        const numValue = parseFloat(value);
+        if (isNaN(numValue)) {
+          value = '$0';
+        } else {
+          value = numValue >= 0 ? `+$${Math.abs(numValue)}` : `-$${Math.abs(numValue)}`;
+        }
+      }
+      if (subtitle && !subtitle.includes('SOL') && !subtitle.includes('(')) {
+        const numSol = parseFloat(subtitle);
+        if (isNaN(numSol)) {
+          subtitle = '0 SOL';
+        } else {
+          subtitle = numSol >= 0 ? `+${Math.abs(numSol)} SOL` : `-${Math.abs(numSol)} SOL`;
+        }
+      }
+      break;
+
+    case 'win_rate':
+      // Win rate: Primary is percentage, Secondary is wins count
+      if (!value.includes('%')) {
+        value = `${value}%`;
+      }
+      if (subtitle && serverHighlight.metadata) {
+        const profitablePos = serverHighlight.metadata.profitablePositions || 0;
+        const closedPos = serverHighlight.metadata.closedPositions || 0;
+        subtitle = `${profitablePos}/${closedPos} wins`;
+      }
+      break;
+
+    case 'longest_hold':
+      // Longest hold: Primary is days, Secondary is token symbol
+      if (!value.includes('day')) {
+        const numDays = parseFloat(value);
+        if (isNaN(numDays) || numDays === 0) {
+          value = '0 days';
+        } else {
+          value = numDays === 1 ? '1 day' : `${numDays} days`;
+        }
+      }
+      // Subtitle is already the token symbol from metadata
+      break;
+  }
+
   const context = serverHighlight.description;
 
   return {
@@ -336,37 +392,37 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
       case 'holographic':
         return {
           valueClass: isProfit ? 'text-cyan-300' : isLoss ? 'text-pink-400' : 'text-purple-300',
-          subtitleClass: 'text-purple-200',
+          subtitleClass: 'text-gray-300',
           accentClass: 'text-purple-400',
-          labelClass: 'text-purple-300',
-          contextClass: 'text-purple-200/70',
+          labelClass: 'text-gray-400',
+          contextClass: 'text-gray-400/80',
           borderClass: 'border-purple-400/30',
         };
       case 'cyberpunk':
         return {
           valueClass: isProfit ? 'text-cyan-400' : isLoss ? 'text-pink-500' : 'text-yellow-400',
-          subtitleClass: 'text-cyan-200',
+          subtitleClass: 'text-gray-300',
           accentClass: 'text-yellow-400',
-          labelClass: 'text-cyan-400',
-          contextClass: 'text-cyan-200/70',
+          labelClass: 'text-gray-400',
+          contextClass: 'text-gray-400/80',
           borderClass: 'border-cyan-500/30',
         };
       case 'aurora':
         return {
           valueClass: isProfit ? 'text-green-300' : isLoss ? 'text-purple-400' : 'text-cyan-300',
-          subtitleClass: 'text-green-200',
+          subtitleClass: 'text-gray-300',
           accentClass: 'text-cyan-300',
-          labelClass: 'text-green-300',
-          contextClass: 'text-cyan-200/60',
+          labelClass: 'text-gray-400',
+          contextClass: 'text-gray-400/80',
           borderClass: 'border-green-400/30',
         };
       case 'candy':
         return {
           valueClass: isProfit ? 'text-green-600' : isLoss ? 'text-pink-600' : 'text-purple-600',
-          subtitleClass: 'text-purple-500',
+          subtitleClass: 'text-gray-700',
           accentClass: 'text-pink-500',
-          labelClass: 'text-purple-400',
-          contextClass: 'text-purple-400/80',
+          labelClass: 'text-gray-600',
+          contextClass: 'text-gray-600/90',
           borderClass: 'border-pink-300',
         };
     }
@@ -390,8 +446,11 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
 
   // Calculate font size based on value length (explicit values for html2canvas)
   const getValueFontSize = () => {
-    if (highlight.value.length > 15) return '2rem';
-    if (highlight.value.length > 10) return '2.5rem';
+    const len = highlight.value.length;
+    if (len > 20) return '1.75rem';
+    if (len > 15) return '2rem';
+    if (len > 12) return '2.5rem';
+    if (len > 8) return '3rem';
     return '3.5rem';
   };
 
@@ -426,8 +485,10 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
         {/* Token ticker if applicable */}
         {highlight.tokenTicker && (
           <div className="flex items-center gap-2 mt-4">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${
-              isProfit ? 'bg-green-500' : isLoss ? 'bg-pink-500' : 'bg-purple-500'
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+              theme === 'candy'
+                ? isProfit ? 'bg-green-500 text-white' : isLoss ? 'bg-pink-500 text-white' : 'bg-purple-500 text-white'
+                : isProfit ? 'bg-green-500 text-white' : isLoss ? 'bg-pink-500 text-white' : 'bg-purple-500 text-white'
             }`}>
               {highlight.tokenTicker.charAt(0)}
             </div>
@@ -457,7 +518,7 @@ function PNLCard({ highlight, walletAddress, theme }: { highlight: Highlight; wa
 
         {/* Bottom section - Context & Branding (fixed height) */}
         <div style={{ minHeight: '100px' }}>
-          <p className={`text-sm mb-4 ${styles.contextClass}`} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          <p className={`text-lg mb-4 ${styles.contextClass}`} style={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
             {highlight.context}
           </p>
 
@@ -597,17 +658,81 @@ export default function HighlightsPage() {
 
       const canvas = await html2canvas(cardElement as HTMLElement, {
         backgroundColor: null,
-        scale: 2, // Higher quality
+        scale: 3, // Higher quality for better rendering
         useCORS: true,
+        allowTaint: true,
         logging: false,
-        height: 520, // Explicit height
+        width: 400,
+        height: 520,
+        windowWidth: 400,
         windowHeight: 520,
-        onclone: (clonedDoc) => {
-          // Ensure cloned element has correct dimensions
+        foreignObjectRendering: false,
+        imageTimeout: 0,
+        removeContainer: true,
+        onclone: (clonedDoc, clonedElement) => {
           const clonedCard = clonedDoc.querySelector('.pnl-card') as HTMLElement;
           if (clonedCard) {
+            // Set explicit dimensions
+            clonedCard.style.width = '400px';
             clonedCard.style.height = '520px';
             clonedCard.style.minHeight = '520px';
+            clonedCard.style.maxWidth = '400px';
+            clonedCard.style.position = 'relative';
+            clonedCard.style.overflow = 'hidden';
+
+            // Get computed styles from original element
+            const originalCard = cardElement as HTMLElement;
+            const originalComputedStyle = window.getComputedStyle(originalCard);
+
+            // Copy all background-related styles from original
+            clonedCard.style.background = originalComputedStyle.background;
+            clonedCard.style.backgroundColor = originalComputedStyle.backgroundColor;
+            clonedCard.style.backgroundImage = originalComputedStyle.backgroundImage;
+            clonedCard.style.backgroundSize = originalComputedStyle.backgroundSize;
+            clonedCard.style.backgroundPosition = originalComputedStyle.backgroundPosition;
+            clonedCard.style.backgroundRepeat = originalComputedStyle.backgroundRepeat;
+            clonedCard.style.backgroundClip = originalComputedStyle.backgroundClip;
+            clonedCard.style.borderRadius = originalComputedStyle.borderRadius;
+
+            // Handle holographic border ::before pseudo-element
+            // Since html2canvas doesn't capture pseudo-elements, we need to create a real element
+            if (clonedCard.classList.contains('theme-holographic')) {
+              const beforePseudo = clonedDoc.createElement('div');
+              beforePseudo.style.cssText = `
+                content: '';
+                position: absolute;
+                inset: -2px;
+                background: linear-gradient(45deg, #ff0080, #ff8c00, #40e0d0, #ff0080, #7b68ee, #ff0080);
+                background-size: 400% 400%;
+                border-radius: inherit;
+                z-index: -1;
+                opacity: 0.8;
+                pointer-events: none;
+              `;
+              clonedCard.insertBefore(beforePseudo, clonedCard.firstChild);
+            }
+
+            // Force re-render of all child element backgrounds
+            const allElements = clonedCard.querySelectorAll('*');
+            allElements.forEach((el: Element) => {
+              const htmlEl = el as HTMLElement;
+              const originalEl = Array.from(originalCard.querySelectorAll('*')).find(
+                (origEl) => origEl.textContent === el.textContent && origEl.className === el.className
+              );
+
+              if (originalEl) {
+                const computedStyle = window.getComputedStyle(originalEl);
+                if (computedStyle.background && computedStyle.background !== 'rgba(0, 0, 0, 0) none repeat scroll 0% 0% / auto padding-box border-box') {
+                  htmlEl.style.background = computedStyle.background;
+                }
+                if (computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none') {
+                  htmlEl.style.backgroundImage = computedStyle.backgroundImage;
+                }
+                if (computedStyle.color) {
+                  htmlEl.style.color = computedStyle.color;
+                }
+              }
+            });
           }
         },
       });
@@ -658,16 +783,41 @@ export default function HighlightsPage() {
 
         const canvas = await html2canvas(cardElement as HTMLElement, {
           backgroundColor: null,
-          scale: 2,
+          scale: 3,
           useCORS: true,
+          allowTaint: true,
           logging: false,
+          width: 400,
           height: 520,
+          windowWidth: 400,
           windowHeight: 520,
+          foreignObjectRendering: false,
+          imageTimeout: 0,
+          removeContainer: true,
           onclone: (clonedDoc) => {
             const clonedCard = clonedDoc.querySelector('.pnl-card') as HTMLElement;
             if (clonedCard) {
+              clonedCard.style.width = '400px';
               clonedCard.style.height = '520px';
               clonedCard.style.minHeight = '520px';
+              clonedCard.style.maxWidth = '400px';
+              clonedCard.style.position = 'relative';
+              clonedCard.style.overflow = 'hidden';
+
+              // Force re-render of backgrounds and gradients
+              const allElements = clonedCard.querySelectorAll('*');
+              allElements.forEach((el: Element) => {
+                const htmlEl = el as HTMLElement;
+                const computedStyle = window.getComputedStyle(el);
+
+                // Preserve background styles
+                if (computedStyle.background) {
+                  htmlEl.style.background = computedStyle.background;
+                }
+                if (computedStyle.backgroundImage && computedStyle.backgroundImage !== 'none') {
+                  htmlEl.style.backgroundImage = computedStyle.backgroundImage;
+                }
+              });
             }
           },
         });

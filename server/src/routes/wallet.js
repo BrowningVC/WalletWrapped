@@ -6,6 +6,7 @@ const CacheManager = require('../utils/cacheManager');
 const WalletAnalyzer = require('../services/analyzer');
 const HighlightsGenerator = require('../services/highlights');
 const AnalysisOrchestrator = require('../services/analysisOrchestrator');
+const { validateCSRFToken } = require('../middleware/csrf');
 
 /**
  * Validate Solana wallet address
@@ -89,20 +90,64 @@ router.get('/wallet/:address/summary', async (req, res) => {
 
 /**
  * GET /api/wallet/:address/positions
- * Get all token positions for wallet
+ * Get all token positions for wallet with pagination
  *
  * Query params:
  * - active: boolean (filter for active positions only)
  * - sort: string (realized_pnl, unrealized_pnl, balance)
  * - order: asc|desc
+ * - limit: number (default: 50, max: 200) - results per page
+ * - offset: number (default: 0) - skip first N results
  */
 router.get('/wallet/:address/positions', async (req, res) => {
   try {
     const { address } = req.params;
-    const { active, sort = 'realized_pnl', order = 'desc' } = req.query;
+    const {
+      active,
+      sort = 'realized_pnl',
+      order = 'desc',
+      limit = 50,
+      offset = 0
+    } = req.query;
 
     if (!isValidSolanaAddress(address)) {
       return res.status(400).json({ error: 'Invalid wallet address' });
+    }
+
+    // Validate sort parameter (whitelist)
+    const validSortFields = ['realized_pnl', 'unrealized_pnl', 'balance'];
+    if (!validSortFields.includes(sort)) {
+      return res.status(400).json({
+        error: 'Invalid sort parameter',
+        message: `Sort must be one of: ${validSortFields.join(', ')}`
+      });
+    }
+
+    // Validate order parameter (whitelist)
+    const validOrders = ['asc', 'desc'];
+    if (!validOrders.includes(order)) {
+      return res.status(400).json({
+        error: 'Invalid order parameter',
+        message: 'Order must be either "asc" or "desc"'
+      });
+    }
+
+    // Validate pagination parameters
+    const parsedLimit = parseInt(limit);
+    const parsedOffset = parseInt(offset);
+
+    if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 200) {
+      return res.status(400).json({
+        error: 'Invalid limit parameter',
+        message: 'Limit must be between 1 and 200'
+      });
+    }
+
+    if (isNaN(parsedOffset) || parsedOffset < 0) {
+      return res.status(400).json({
+        error: 'Invalid offset parameter',
+        message: 'Offset must be 0 or greater'
+      });
     }
 
     const check = await requireCompletedAnalysis(address);
@@ -115,12 +160,12 @@ router.get('/wallet/:address/positions', async (req, res) => {
       ? await DatabaseQueries.getActivePositions(address)
       : await DatabaseQueries.getPositions(address);
 
-    // Sort
+    // Sort (safe now with validated input)
     const sortKey = {
       'realized_pnl': 'realized_pnl_sol',
       'unrealized_pnl': 'unrealized_pnl_sol',
       'balance': 'current_balance'
-    }[sort] || 'realized_pnl_sol';
+    }[sort];
 
     positions.sort((a, b) => {
       const aVal = parseFloat(a[sortKey]);
@@ -128,9 +173,18 @@ router.get('/wallet/:address/positions', async (req, res) => {
       return order === 'asc' ? aVal - bVal : bVal - aVal;
     });
 
+    // Apply pagination
+    const totalCount = positions.length;
+    const paginatedPositions = positions.slice(parsedOffset, parsedOffset + parsedLimit);
+    const hasMore = (parsedOffset + parsedLimit) < totalCount;
+
     res.json({
-      count: positions.length,
-      positions: positions.map(p => ({
+      count: paginatedPositions.length,
+      total: totalCount,
+      offset: parsedOffset,
+      limit: parsedLimit,
+      hasMore,
+      positions: paginatedPositions.map(p => ({
         tokenMint: p.token_mint,
         tokenSymbol: p.token_symbol,
         tokenName: p.token_name,
@@ -176,10 +230,15 @@ router.get('/wallet/:address/highlights', async (req, res) => {
       return res.status(400).json({ error: 'Invalid wallet address' });
     }
 
-    const check = await requireCompletedAnalysis(address);
-    if (check.error) {
-      return res.status(check.status).json({ error: check.error, message: check.message });
+    // Check if analysis exists (but don't require it to be completed)
+    const analysis = await DatabaseQueries.getAnalysis(address);
+    if (!analysis) {
+      return res.status(404).json({ error: 'Analysis not found' });
     }
+
+    // If analysis is in progress but highlights exist, return them
+    // This prevents blocking during auto-refresh
+    const isProcessing = analysis.analysis_status === 'processing';
 
     // Get from database
     let highlights = await DatabaseQueries.getHighlights(address);
@@ -190,7 +249,8 @@ router.get('/wallet/:address/highlights', async (req, res) => {
       highlights.length !== 6 ||
       (highlights[0]?.metadata?.highlightsVersion !== currentVersion);
 
-    if (needsRefresh && highlights && highlights.length > 0) {
+    // Only trigger refresh if not already processing
+    if (needsRefresh && highlights && highlights.length > 0 && !isProcessing) {
       console.log(`Highlights for ${address} are outdated (v${highlights[0]?.metadata?.highlightsVersion || '?'} vs v${currentVersion}), auto-refreshing...`);
 
       // Start a background refresh but return existing data for now
@@ -264,6 +324,15 @@ router.get('/wallet/:address/calendar', async (req, res) => {
       });
     }
 
+    // Validate currency parameter (whitelist)
+    const validCurrencies = ['SOL', 'USD'];
+    if (!validCurrencies.includes(currency)) {
+      return res.status(400).json({
+        error: 'Invalid currency parameter',
+        message: 'Currency must be either "SOL" or "USD"'
+      });
+    }
+
     const check = await requireCompletedAnalysis(address);
     if (check.error) {
       return res.status(check.status).json({ error: check.error, message: check.message });
@@ -315,9 +384,10 @@ router.get('/wallet/:address/calendar', async (req, res) => {
  * POST /api/wallet/:address/refresh
  * Force refresh analysis (invalidate cache and re-analyze)
  *
+ * Headers: { X-CSRF-Token: string } (required in production)
  * Rate limited to 1 request per hour per wallet
  */
-router.post('/wallet/:address/refresh', async (req, res) => {
+router.post('/wallet/:address/refresh', validateCSRFToken, async (req, res) => {
   try {
     const { address } = req.params;
 

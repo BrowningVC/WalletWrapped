@@ -5,6 +5,9 @@ const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
 const RateLimiter = require('../utils/rateLimiter');
 const AnalysisOrchestrator = require('../services/analysisOrchestrator');
+const { validateCSRFToken } = require('../middleware/csrf');
+const QueueManager = require('../utils/queueManager');
+const SystemMonitor = require('../utils/monitor');
 
 /**
  * Validate Solana wallet address
@@ -25,14 +28,16 @@ function isValidSolanaAddress(address) {
  * Start new wallet analysis or return existing status
  *
  * Body: { walletAddress: string }
+ * Headers: { X-CSRF-Token: string } (required in production)
  *
  * Returns:
  * - 200: Analysis queued/in-progress/completed
  * - 400: Invalid wallet address
+ * - 403: CSRF token invalid/missing
  * - 429: Rate limit exceeded
  * - 500: Server error
  */
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', validateCSRFToken, async (req, res) => {
   try {
     const { walletAddress } = req.body;
 
@@ -115,12 +120,40 @@ router.post('/analyze', async (req, res) => {
       });
     }
 
-    // Start analysis directly (no queue) - runs concurrently with other analyses
+    // Check if we should queue the request due to capacity
+    const shouldQueue = await QueueManager.shouldQueue();
     const isIncremental = existing && existing.analysis_status === 'completed';
 
+    if (shouldQueue) {
+      // Queue is at capacity - add to queue
+      const queueInfo = await QueueManager.addToQueue(trimmedAddress, clientIp);
+
+      return res.json({
+        status: 'queued',
+        progress: 0,
+        message: `Queued - Position ${queueInfo.position} in line`,
+        jobId: queueInfo.jobId,
+        queuePosition: queueInfo.position,
+        estimatedWaitTime: queueInfo.estimatedWaitTime,
+        walletAddress: trimmedAddress
+      });
+    }
+
+    // Record analysis start for monitoring
+    await SystemMonitor.recordAnalysisStart(trimmedAddress, clientIp);
+
     // Fire and forget - analysis runs in background, client polls for status
+    const startTime = Date.now();
     AnalysisOrchestrator.runAnalysis(trimmedAddress, isIncremental)
-      .catch(err => console.error(`Analysis failed for ${trimmedAddress}:`, err));
+      .then(() => {
+        const duration = Date.now() - startTime;
+        SystemMonitor.recordAnalysisComplete(trimmedAddress, duration, true);
+      })
+      .catch(err => {
+        console.error(`Analysis failed for ${trimmedAddress}:`, err);
+        const duration = Date.now() - startTime;
+        SystemMonitor.recordAnalysisComplete(trimmedAddress, duration, false);
+      });
 
     res.json({
       status: 'processing',
@@ -199,12 +232,15 @@ router.get('/analyze/:address/status', async (req, res) => {
  * DELETE /api/analyze/:address
  * Cancel ongoing analysis
  *
+ * Headers: { X-CSRF-Token: string } (required in production)
+ *
  * Returns:
  * - 200: Analysis cancelled
  * - 400: Invalid address or analysis not cancellable
+ * - 403: CSRF token invalid/missing
  * - 404: Analysis not found
  */
-router.delete('/analyze/:address', async (req, res) => {
+router.delete('/analyze/:address', validateCSRFToken, async (req, res) => {
   try {
     const { address } = req.params;
 

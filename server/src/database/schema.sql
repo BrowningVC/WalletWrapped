@@ -120,8 +120,8 @@ CREATE TABLE highlights (
   highlight_type VARCHAR(50) NOT NULL,              -- biggest_win, best_trade, diamond_hands, etc.
   title VARCHAR(200) NOT NULL,
   description TEXT,
-  value_primary DECIMAL(20, 9),                     -- Primary value (usually SOL)
-  value_secondary DECIMAL(20, 2),                   -- Secondary value (usually USD)
+  value_primary DECIMAL(20, 1),                     -- Primary value (1 decimal precision)
+  value_secondary DECIMAL(20, 1),                   -- Secondary value (1 decimal precision)
   metadata JSONB DEFAULT '{}'::jsonb,               -- Additional data (token info, dates, etc.)
   rank INTEGER,                                     -- For ordering within type
   image_url VARCHAR(500),                           -- Pre-generated image URL (CDN)
@@ -149,6 +149,8 @@ CREATE TABLE sol_prices (
 CREATE INDEX idx_wallet_analyses_address ON wallet_analyses(wallet_address);
 CREATE INDEX idx_wallet_analyses_status ON wallet_analyses(analysis_status) WHERE analysis_status != 'completed';
 CREATE INDEX idx_wallet_analyses_expires ON wallet_analyses(expires_at) WHERE expires_at > CURRENT_TIMESTAMP;
+-- Composite index for stale analysis cleanup query
+CREATE INDEX idx_wallet_analyses_status_expires ON wallet_analyses(analysis_status, expires_at) WHERE analysis_status = 'processing';
 
 -- Token positions indexes
 CREATE INDEX idx_token_positions_wallet ON token_positions(wallet_address);
@@ -163,11 +165,15 @@ CREATE INDEX idx_transactions_signature ON transactions(signature);
 CREATE INDEX idx_transactions_wallet_time ON transactions(wallet_address, block_time DESC);
 CREATE INDEX idx_transactions_wallet_token ON transactions(wallet_address, token_mint, block_time DESC);
 CREATE INDEX idx_transactions_type ON transactions(transaction_type) WHERE transaction_type != 'SOL_TRANSFER';
+-- Composite index for P&L calculations (token_mint + block_time for FIFO sorting)
+CREATE INDEX idx_transactions_token_time ON transactions(token_mint, block_time) WHERE token_mint IS NOT NULL;
 
 -- Daily P&L indexes
 CREATE INDEX idx_daily_pnl_wallet ON daily_pnl(wallet_address);
 CREATE INDEX idx_daily_pnl_wallet_date ON daily_pnl(wallet_address, date DESC);
 CREATE INDEX idx_daily_pnl_date ON daily_pnl(date DESC);
+-- Composite index for calendar queries with year/month filtering
+CREATE INDEX idx_daily_pnl_wallet_year_month ON daily_pnl(wallet_address, EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date));
 
 -- Highlights indexes
 CREATE INDEX idx_highlights_wallet ON highlights(wallet_address);

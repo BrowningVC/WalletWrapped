@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(claude tasks)",
+      "Bash(curl:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run dev:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm run:*)",
+      "Bash(psql:*)",
+      "Bash(python:*)",
+      "Bash(timeout 5 tail:*)",
+      "Bash(node check-db.js:*)",
+      "Bash(tasklist:*)",
+      "Bash(node check-failed-analyses.js:*)",
+      "Bash(node -e:*)",
+      "Bash(node -p:*)",
+      "Bash(node get-wallet-data.js:*)",
+      "Bash(node analyze-tx-counts.js:*)",
+      "Bash(node find-high-volume-wallet.js:*)",
+      "Bash(powershell -Command \"Measure-Command { curl.exe -X POST http://localhost:3003/api/analyze -H ''Content-Type: application/json'' -d ''{\"\"walletAddress\"\":\"\"GThUX1Atko4tqhN2NaiTazWSeFWMuiUvfFnyJyUghFMJ\"\"}'' } | Select-Object -ExpandProperty TotalSeconds\")",
+      "Bash(timeout 300 bash -c 'while true; do curl -s \"\"http://localhost:3003/api/monitor/active\"\" 2>/dev/null | grep -o \"\"\\\\\"\"count\\\\\"\":[0-9]*\"\" && sleep 10; done')",
+      "Bash(node monitor-analysis.js:*)",
+      "Bash(node test-performance.js:*)",
+      "Bash(git add:*)"
+    ]
+  }
+}

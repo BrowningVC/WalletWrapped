@@ -153,12 +153,30 @@ class CacheManager {
       `progress:${walletAddress}`
     ];
 
-    // Also invalidate all daily PNL keys for this wallet
-    const dailyPNLKeys = await redis.redis.keys(`daily_pnl:${walletAddress}:*`);
+    // Also invalidate all daily PNL keys for this wallet (using SCAN)
+    const dailyPNLKeys = await this.scanKeys(`daily_pnl:${walletAddress}:*`);
     keys.push(...dailyPNLKeys);
 
     await redis.del(...keys);
     console.log(`Invalidated cache for wallet: ${walletAddress}`);
+  }
+
+  /**
+   * Scan Redis keys using SCAN command (production-safe, non-blocking)
+   * @param {string} pattern - Key pattern to match
+   * @returns {Promise<string[]>} Array of matching keys
+   */
+  static async scanKeys(pattern) {
+    const keys = [];
+    let cursor = '0';
+
+    do {
+      const result = await redis.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
+      cursor = result[0];
+      keys.push(...result[1]);
+    } while (cursor !== '0');
+
+    return keys;
   }
 
   /**
