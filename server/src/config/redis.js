@@ -1,9 +1,32 @@
 const { createClient } = require('redis');
 require('dotenv').config();
 
+// Sanitize Redis URL - remove any leading/trailing whitespace, tabs, or errant characters
+function sanitizeRedisUrl(url) {
+  if (!url) return 'redis://localhost:6379';
+
+  // Remove leading/trailing whitespace and newlines
+  let sanitized = url.trim();
+
+  // Remove leading tab and equals sign if present (common Railway copy/paste issue)
+  sanitized = sanitized.replace(/^[\t\s]*=?\s*/, '');
+
+  // Ensure it starts with redis://
+  if (!sanitized.startsWith('redis://') && !sanitized.startsWith('rediss://')) {
+    // Try to find redis:// in the string
+    const redisIndex = sanitized.indexOf('redis://');
+    if (redisIndex !== -1) {
+      sanitized = sanitized.substring(redisIndex);
+    }
+  }
+
+  console.log(`Sanitized Redis URL: ${sanitized.replace(/:[^:@]+@/, ':***@')}`);
+  return sanitized;
+}
+
 // Create Redis client
 const redis = createClient({
-  url: process.env.REDIS_URL || 'redis://localhost:6379'
+  url: sanitizeRedisUrl(process.env.REDIS_URL)
 });
 
 // Error handling
