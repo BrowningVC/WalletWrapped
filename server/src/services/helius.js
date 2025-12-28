@@ -438,61 +438,68 @@ class HeliusService {
     const tokenTransfers = heliusTx.tokenTransfers || [];
     const accountData = heliusTx.accountData || [];
 
-    // Calculate native SOL in/out from transfers
-    let nativeSolIn = 0;  // Native SOL leaving wallet
-    let nativeSolOut = 0; // Native SOL entering wallet
-
-    for (const transfer of nativeTransfers) {
-      if (transfer.fromUserAccount === walletAddress) {
-        nativeSolIn += transfer.amount / 1e9;
-      }
-      if (transfer.toUserAccount === walletAddress) {
-        nativeSolOut += transfer.amount / 1e9;
-      }
-    }
-
-    // CRITICAL: For PumpFun and other DEXes, check accountData.nativeBalanceChange
+    // CRITICAL: For PumpFun and other DEXes, check accountData.nativeBalanceChange FIRST
     // This is the canonical source for SOL amount in many DEX swaps
+    // If present, use it exclusively and ignore other transfer data to avoid double-counting
     const walletAccountData = accountData.find(acc => acc.account === walletAddress);
+    let solIn, solOut;
+
     if (walletAccountData && walletAccountData.nativeBalanceChange) {
+      // Use nativeBalanceChange as the source of truth
       const balanceChange = walletAccountData.nativeBalanceChange / 1e9;
       if (balanceChange > 0) {
         // Positive = SOL entering wallet (SELL)
-        nativeSolOut += balanceChange;
+        solIn = 0;
+        solOut = balanceChange;
       } else if (balanceChange < 0) {
         // Negative = SOL leaving wallet (BUY)
-        nativeSolIn += Math.abs(balanceChange);
+        solIn = Math.abs(balanceChange);
+        solOut = 0;
+      } else {
+        solIn = 0;
+        solOut = 0;
       }
-    }
-
-    // Calculate WSOL in/out
-    // CRITICAL: WSOL tokenAmount is in raw format (lamports), must divide by 1e9 to get SOL
-    let wsolIn = 0;  // WSOL leaving wallet
-    let wsolOut = 0; // WSOL entering wallet
-
-    const wsolTransfers = tokenTransfers.filter(t => t.mint === SOL_MINT);
-    for (const transfer of wsolTransfers) {
-      if (transfer.fromUserAccount === walletAddress) {
-        wsolIn += transfer.tokenAmount / 1e9; // Convert lamports to SOL
-      }
-      if (transfer.toUserAccount === walletAddress) {
-        wsolOut += transfer.tokenAmount / 1e9; // Convert lamports to SOL
-      }
-    }
-
-    // CRITICAL: Use WSOL if present (it's the canonical DEX transfer),
-    // otherwise fall back to native SOL. Never add both!
-    // This prevents double-counting when SOL is wrapped/unwrapped as part of the swap.
-    let solIn, solOut;
-
-    if (wsolIn > 0 || wsolOut > 0) {
-      // WSOL transfers exist - use those (they represent the actual DEX swap)
-      solIn = wsolIn;
-      solOut = wsolOut;
     } else {
-      // No WSOL, use native SOL transfers
-      solIn = nativeSolIn;
-      solOut = nativeSolOut;
+      // Fallback: Calculate from native transfers and WSOL transfers
+      let nativeSolIn = 0;  // Native SOL leaving wallet
+      let nativeSolOut = 0; // Native SOL entering wallet
+
+      for (const transfer of nativeTransfers) {
+        if (transfer.fromUserAccount === walletAddress) {
+          nativeSolIn += transfer.amount / 1e9;
+        }
+        if (transfer.toUserAccount === walletAddress) {
+          nativeSolOut += transfer.amount / 1e9;
+        }
+      }
+
+      // Calculate WSOL in/out
+      // CRITICAL: WSOL tokenAmount is in raw format (lamports), must divide by 1e9 to get SOL
+      let wsolIn = 0;  // WSOL leaving wallet
+      let wsolOut = 0; // WSOL entering wallet
+
+      const wsolTransfers = tokenTransfers.filter(t => t.mint === SOL_MINT);
+      for (const transfer of wsolTransfers) {
+        if (transfer.fromUserAccount === walletAddress) {
+          wsolIn += transfer.tokenAmount / 1e9; // Convert lamports to SOL
+        }
+        if (transfer.toUserAccount === walletAddress) {
+          wsolOut += transfer.tokenAmount / 1e9; // Convert lamports to SOL
+        }
+      }
+
+      // Use WSOL if present (it's the canonical DEX transfer),
+      // otherwise fall back to native SOL. Never add both!
+      // This prevents double-counting when SOL is wrapped/unwrapped as part of the swap.
+      if (wsolIn > 0 || wsolOut > 0) {
+        // WSOL transfers exist - use those (they represent the actual DEX swap)
+        solIn = wsolIn;
+        solOut = wsolOut;
+      } else {
+        // No WSOL, use native SOL transfers
+        solIn = nativeSolIn;
+        solOut = nativeSolOut;
+      }
     }
 
     // Find the token transfer that involves THIS wallet (not just any transfer of the token)
@@ -520,6 +527,8 @@ class HeliusService {
    */
   static parseTransferDetails(heliusTx, normalized, walletAddress) {
     const tokenTransfers = heliusTx.tokenTransfers || [];
+    const accountData = heliusTx.accountData || [];
+
     // Find the transfer that involves THIS wallet
     const tokenTransfer = tokenTransfers.find(t =>
       t.mint === normalized.tokenMint &&
@@ -530,6 +539,16 @@ class HeliusService {
       // Helius Enhanced API returns tokenAmount already in human-readable format
       normalized.tokenAmount = tokenTransfer.tokenAmount;
       normalized.isEstimated = normalized.type === 'TRANSFER_OUT'; // Mark transfers out as estimated
+    }
+
+    // CRITICAL: Extract SOL amounts from accountData.nativeBalanceChange
+    // Many DEXes (including those used for AVICI) classify swaps as TRANSFER instead of SWAP
+    // and store SOL amounts in accountData instead of nativeTransfers
+    const walletAccountData = accountData.find(acc => acc.account === walletAddress);
+    if (walletAccountData && walletAccountData.nativeBalanceChange) {
+      const balanceChange = Math.abs(walletAccountData.nativeBalanceChange) / 1e9;
+      // For transfers, the balance change represents the SOL amount
+      normalized.solAmount = balanceChange;
     }
   }
 
