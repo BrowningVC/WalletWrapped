@@ -11,65 +11,75 @@ export default function Logo({ size = 'default' }: { size?: 'small' | 'default' 
 
   return (
     <div className={`inline-flex items-center ${s.wrapper}`}>
-      {/* Logo Icon - Crypto wallet with chart */}
+      {/* Logo Icon - Calendar Year in Review */}
       <div className={`relative ${s.icon}`}>
         <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
-          {/* Main wallet shape */}
-          <rect x="8" y="16" width="48" height="36" rx="4" fill="url(#walletGradient)" stroke="url(#borderGradient)" strokeWidth="2" />
+          {/* Calendar base */}
+          <rect x="10" y="14" width="44" height="40" rx="4" fill="url(#calendarGradient)" stroke="url(#borderGradient)" strokeWidth="2" />
 
-          {/* Wallet flap/fold */}
-          <path d="M8 24 L56 24 L56 20 C56 17.79 54.21 16 52 16 L12 16 C9.79 16 8 17.79 8 20 L8 24Z" fill="url(#flapGradient)" />
+          {/* Calendar header bar */}
+          <rect x="10" y="14" width="44" height="10" rx="4" fill="url(#headerGradient)" />
+          <rect x="10" y="20" width="44" height="4" fill="url(#headerGradient)" />
 
-          {/* Chart area background */}
-          <rect x="12" y="28" width="40" height="20" rx="2" fill="#0a0a12" opacity="0.8" />
+          {/* Calendar rings/binding */}
+          <rect x="18" y="10" width="3" height="8" rx="1.5" fill="url(#borderGradient)" />
+          <rect x="31" y="10" width="3" height="8" rx="1.5" fill="url(#borderGradient)" />
+          <rect x="44" y="10" width="3" height="8" rx="1.5" fill="url(#borderGradient)" />
 
-          {/* Candlestick chart */}
-          {/* Green candle 1 */}
-          <rect x="16" y="36" width="4" height="8" fill="#10b981" rx="0.5" />
-          <line x1="18" y1="34" x2="18" y2="36" stroke="#10b981" strokeWidth="1.5" />
-          <line x1="18" y1="44" x2="18" y2="46" stroke="#10b981" strokeWidth="1.5" />
+          {/* Calendar grid - simplified week view */}
+          <line x1="14" y1="28" x2="50" y2="28" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="14" y1="34" x2="50" y2="34" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="14" y1="40" x2="50" y2="40" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="14" y1="46" x2="50" y2="46" stroke="#2a2a3e" strokeWidth="0.5" />
 
-          {/* Red candle 2 */}
-          <rect x="24" y="32" width="4" height="10" fill="#ef4444" rx="0.5" />
-          <line x1="26" y1="30" x2="26" y2="32" stroke="#ef4444" strokeWidth="1.5" />
-          <line x1="26" y1="42" x2="26" y2="44" stroke="#ef4444" strokeWidth="1.5" />
+          <line x1="20" y1="24" x2="20" y2="50" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="26" y1="24" x2="26" y2="50" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="32" y1="24" x2="32" y2="50" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="38" y1="24" x2="38" y2="50" stroke="#2a2a3e" strokeWidth="0.5" />
+          <line x1="44" y1="24" x2="44" y2="50" stroke="#2a2a3e" strokeWidth="0.5" />
 
-          {/* Green candle 3 - big pump */}
-          <rect x="32" y="30" width="4" height="14" fill="#10b981" rx="0.5" />
-          <line x1="34" y1="28" x2="34" y2="30" stroke="#10b981" strokeWidth="1.5" />
-          <line x1="34" y1="44" x2="34" y2="46" stroke="#10b981" strokeWidth="1.5" />
+          {/* Highlighted days - trading activity indicators */}
+          <circle cx="17" cy="31" r="2" fill="#10b981" opacity="0.8" />
+          <circle cx="23" cy="31" r="2" fill="#ffd700" opacity="0.8" />
+          <circle cx="35" cy="37" r="2" fill="#ff6b9d" opacity="0.8" />
+          <circle cx="41" cy="37" r="2" fill="#10b981" opacity="0.8" />
+          <circle cx="29" cy="43" r="2" fill="#9d4edd" opacity="0.8" />
+          <circle cx="47" cy="43" r="2" fill="#ffd700" opacity="0.8" />
 
-          {/* Green candle 4 */}
-          <rect x="40" y="32" width="4" height="8" fill="#10b981" rx="0.5" />
-          <line x1="42" y1="30" x2="42" y2="32" stroke="#10b981" strokeWidth="1.5" />
-          <line x1="42" y1="40" x2="42" y2="42" stroke="#10b981" strokeWidth="1.5" />
+          {/* Chart trend line overlay - year performance */}
+          <path
+            d="M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32"
+            stroke="url(#trendGradient)"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            fill="none"
+            opacity="0.6"
+          />
 
-          {/* Solana logo hint - simplified */}
-          <circle cx="48" cy="22" r="4" fill="url(#solanaGradient)" />
-          <path d="M46 21 L50 21 M46 22.5 L50 22.5 M46 24 L50 24" stroke="white" strokeWidth="0.8" strokeLinecap="round" />
-
-          {/* Sparkle effects */}
-          <circle cx="14" cy="12" r="2" fill="#ffd700" className="animate-ping" style={{ animationDuration: '2s' }} />
-          <circle cx="54" cy="10" r="1.5" fill="#ff6b9d" className="animate-ping" style={{ animationDuration: '2.5s' }} />
-          <circle cx="58" cy="38" r="1.5" fill="#9d4edd" className="animate-ping" style={{ animationDuration: '1.8s' }} />
+          {/* Sparkle effects - festive touches */}
+          <circle cx="56" cy="12" r="2" fill="#ffd700" className="animate-ping" style={{ animationDuration: '2s' }} />
+          <circle cx="8" cy="18" r="1.5" fill="#ff6b9d" className="animate-ping" style={{ animationDuration: '2.5s' }} />
+          <circle cx="54" cy="52" r="1.5" fill="#9d4edd" className="animate-ping" style={{ animationDuration: '1.8s' }} />
 
           <defs>
-            <linearGradient id="walletGradient" x1="8" y1="16" x2="56" y2="52" gradientUnits="userSpaceOnUse">
+            <linearGradient id="calendarGradient" x1="10" y1="14" x2="54" y2="54" gradientUnits="userSpaceOnUse">
               <stop stopColor="#1a1a2e" />
               <stop offset="1" stopColor="#0f0f1a" />
+            </linearGradient>
+            <linearGradient id="headerGradient" x1="10" y1="14" x2="54" y2="24" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#2a2a42" />
+              <stop offset="1" stopColor="#1a1a2e" />
             </linearGradient>
             <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop stopColor="#ffd700" />
               <stop offset="0.5" stopColor="#ff6b9d" />
               <stop offset="1" stopColor="#9d4edd" />
             </linearGradient>
-            <linearGradient id="flapGradient" x1="8" y1="16" x2="56" y2="24" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#252542" />
-              <stop offset="1" stopColor="#1a1a2e" />
-            </linearGradient>
-            <linearGradient id="solanaGradient" x1="44" y1="18" x2="52" y2="26" gradientUnits="userSpaceOnUse">
-              <stop stopColor="#9945FF" />
-              <stop offset="1" stopColor="#14F195" />
+            <linearGradient id="trendGradient" x1="14" y1="32" x2="50" y2="48" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#10b981" />
+              <stop offset="0.5" stopColor="#ffd700" />
+              <stop offset="1" stopColor="#ff6b9d" />
             </linearGradient>
           </defs>
         </svg>

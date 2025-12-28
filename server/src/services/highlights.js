@@ -12,8 +12,10 @@ const DatabaseQueries = require('../database/queries');
  * v5 - Changed decimal precision from 2-4 decimals to 1 decimal place for all values
  * v6 - Updated best profit day fallback message to "Never a profitable day? Sheesh!"
  * v7 - Fixed best profit day calculation to use dailyPNL aggregates instead of position.trades
+ * v8 - Temporarily used total P&L (reverted)
+ * v9 - Use REALIZED P&L only for Win/Loss/WinRate (matches GMGN.ai) + PumpFun accountData fix
  */
-const HIGHLIGHTS_VERSION = 7;
+const HIGHLIGHTS_VERSION = 9;
 
 // Stablecoins and wrapped tokens to exclude from win/loss calculations
 // These are used for swapping, not trading
@@ -113,7 +115,8 @@ class HighlightsGenerator {
   }
 
   /**
-   * 2. Biggest Win - Token with highest realized P&L (excluding stablecoins)
+   * 2. Biggest Win - Token with highest REALIZED P&L (excluding stablecoins)
+   * This shows actual profits from closed trades, not paper gains
    */
   static async biggestWin(positions, solPriceUSD) {
     const winner = Object.values(positions)
@@ -161,7 +164,8 @@ class HighlightsGenerator {
   }
 
   /**
-   * 3. Biggest Loss - Token with most negative realized P&L (excluding stablecoins)
+   * 3. Biggest Loss - Token with most negative REALIZED P&L (excluding stablecoins)
+   * This shows actual losses from closed trades, not paper losses
    */
   static async biggestLoss(positions, solPriceUSD) {
     const loser = Object.values(positions)
@@ -209,7 +213,8 @@ class HighlightsGenerator {
   }
 
   /**
-   * 4. Win Rate - Percentage of profitable closed positions
+   * 4. Win Rate - Percentage of profitable CLOSED positions (realized P&L > 0)
+   * This matches GMGN.ai's approach - only counting completed trades, not active holdings
    */
   static async winRate(summary) {
     // Fallback if no closed positions
@@ -237,7 +242,7 @@ class HighlightsGenerator {
     return {
       type: 'win_rate',
       title: 'Win Rate',
-      description: `${winRateValue}% of your trades were profitable`,
+      description: `${winRateValue}% of your closed trades were profitable`,
       valuePrimary: winRateValue, // Numeric value (percentage as number, 1 DP)
       valueSecondary: summary.profitablePositions, // Numeric value (count)
       metadata: {

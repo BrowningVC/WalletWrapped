@@ -429,12 +429,16 @@ class HeliusService {
    * CRITICAL: Avoid double-counting SOL when both native and WSOL transfers exist
    * DEX flow: Native SOL → wrap to WSOL → DEX (or reverse for sells)
    * We should count ONE OR THE OTHER, not both!
+   *
+   * For PumpFun and some other DEXes, SOL amounts are in accountData.nativeBalanceChange
+   * instead of nativeTransfers.
    */
   static parseSwapDetails(heliusTx, normalized, walletAddress) {
     const nativeTransfers = heliusTx.nativeTransfers || [];
     const tokenTransfers = heliusTx.tokenTransfers || [];
+    const accountData = heliusTx.accountData || [];
 
-    // Calculate native SOL in/out
+    // Calculate native SOL in/out from transfers
     let nativeSolIn = 0;  // Native SOL leaving wallet
     let nativeSolOut = 0; // Native SOL entering wallet
 
@@ -444,6 +448,20 @@ class HeliusService {
       }
       if (transfer.toUserAccount === walletAddress) {
         nativeSolOut += transfer.amount / 1e9;
+      }
+    }
+
+    // CRITICAL: For PumpFun and other DEXes, check accountData.nativeBalanceChange
+    // This is the canonical source for SOL amount in many DEX swaps
+    const walletAccountData = accountData.find(acc => acc.account === walletAddress);
+    if (walletAccountData && walletAccountData.nativeBalanceChange) {
+      const balanceChange = walletAccountData.nativeBalanceChange / 1e9;
+      if (balanceChange > 0) {
+        // Positive = SOL entering wallet (SELL)
+        nativeSolOut += balanceChange;
+      } else if (balanceChange < 0) {
+        // Negative = SOL leaving wallet (BUY)
+        nativeSolIn += Math.abs(balanceChange);
       }
     }
 

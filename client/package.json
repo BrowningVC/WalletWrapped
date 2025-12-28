@@ -12,6 +12,7 @@
   "dependencies": {
     "@solana/web3.js": "^1.98.0",
     "@vercel/og": "^0.6.3",
+    "bufferutil": "^4.1.0",
     "date-fns": "^4.1.0",
     "framer-motion": "^11.15.0",
     "html2canvas": "^1.4.1",
@@ -19,7 +20,8 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.15.0",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "utf-8-validate": "^5.0.10"
   },
   "devDependencies": {
     "@types/node": "^22",

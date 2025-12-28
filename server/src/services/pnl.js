@@ -454,6 +454,14 @@ class PNLCalculator {
    * Uses Net SOL Flow as primary P&L (matches GMGN), FIFO as fallback
    */
   static calculateSummary(positions, netSolFlowPNL = null) {
+    // Stablecoins to exclude from volume calculations
+    const EXCLUDED_TOKENS = new Set([
+      'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v', // USDC
+      'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB', // USDT
+      'So11111111111111111111111111111111111111112',   // WSOL
+    ]);
+    const EXCLUDED_SYMBOLS = new Set(['USDC', 'USDT', 'BUSD', 'DAI', 'USDH', 'UXD', 'USDR', 'PAI', 'WSOL', 'wSOL']);
+
     // FIFO-based P&L (per-token aggregation - used as fallback)
     let fifoRealizedPNL = 0;
     let fifoUnrealizedPNL = 0;
@@ -462,6 +470,10 @@ class PNLCalculator {
     let profitablePositions = 0;
     let totalPositions = 0;
 
+    // Trading volume (excluding stablecoins)
+    let totalBuyVolumeSol = 0;
+    let totalSellVolumeSol = 0;
+
     for (const mint in positions) {
       const pos = positions[mint];
       totalPositions++;
@@ -469,16 +481,25 @@ class PNLCalculator {
       fifoRealizedPNL += pos.realizedPNL;
       fifoUnrealizedPNL += pos.unrealizedPNL;
 
+      // Calculate trading volume (exclude stablecoins)
+      const isStablecoin = EXCLUDED_TOKENS.has(pos.tokenMint) || EXCLUDED_SYMBOLS.has(pos.tokenSymbol?.toUpperCase());
+      if (!isStablecoin) {
+        totalBuyVolumeSol += pos.solSpent || 0;
+        totalSellVolumeSol += pos.solReceived || 0;
+      }
+
       if (pos.isActive) {
         activePositions++;
       } else {
         closedPositions++;
+        // Count closed positions as profitable based on realized P&L only
         if (pos.realizedPNL > 0) {
           profitablePositions++;
         }
       }
     }
 
+    // Win rate only counts closed positions (not active holdings)
     const winRate = closedPositions > 0
       ? (profitablePositions / closedPositions) * 100
       : 0;
@@ -504,6 +525,10 @@ class PNLCalculator {
       totalPositions,
       profitablePositions,
       winRate: Math.round(winRate * 100) / 100, // Round to 2 decimals
+      // Trading volume (excluding stablecoins)
+      totalBuyVolumeSol,
+      totalSellVolumeSol,
+      totalVolumeSol: totalBuyVolumeSol + totalSellVolumeSol,
       // Method indicator
       pnlMethod: netSolFlowPNL ? 'NET_SOL_FLOW' : 'FIFO'
     };

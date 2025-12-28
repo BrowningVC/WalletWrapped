@@ -402,6 +402,7 @@ export default function HighlightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [currentCard, setCurrentCard] = useState(0);
+  const [imageTimestamp, setImageTimestamp] = useState(Date.now()); // Cache busting timestamp
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success' | 'error'>('idle');
   const [revealedCards, setRevealedCards] = useState<Set<number>>(new Set([0])); // Track which cards have been revealed (start with first card revealed)
   const [sparklingCard, setSparklingCard] = useState<number | null>(null); // Track which card is currently sparkling
@@ -483,6 +484,7 @@ export default function HighlightsPage() {
     if (data && currentCard < data.highlights.length - 1) {
       const nextIdx = currentCard + 1;
       setCurrentCard(nextIdx);
+      setImageTimestamp(Date.now()); // Force image refresh
       revealCard(nextIdx);
     }
   };
@@ -490,6 +492,7 @@ export default function HighlightsPage() {
   const prevCard = () => {
     if (currentCard > 0) {
       setCurrentCard(currentCard - 1);
+      setImageTimestamp(Date.now()); // Force image refresh
       // Previous cards should already be revealed, but ensure it
       revealCard(currentCard - 1);
     }
@@ -498,6 +501,7 @@ export default function HighlightsPage() {
   // Handle direct card selection
   const selectCard = (idx: number) => {
     setCurrentCard(idx);
+    setImageTimestamp(Date.now()); // Force image refresh
     revealCard(idx);
   };
 
@@ -714,7 +718,8 @@ export default function HighlightsPage() {
         <div className="mb-4 relative">
           <div ref={cardRef} style={{ width: '400px', height: '520px', margin: '0 auto' }}>
             <img
-              src={`/api/card/${address}/${currentCard}`}
+              key={`${currentCard}-${imageTimestamp}`}
+              src={`/api/card/${address}/${currentCard}?t=${imageTimestamp}`}
               alt={`${highlight.title} card`}
               style={{
                 width: '400px',

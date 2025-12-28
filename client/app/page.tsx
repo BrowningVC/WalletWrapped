@@ -3,8 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import WalletInput from '@/components/landing/WalletInput';
-import ExampleCards from '@/components/landing/ExampleCards';
-import Features from '@/components/landing/Features';
 import WalletCounter from '@/components/WalletCounter';
 import Fireworks from '@/components/Fireworks';
 import Logo from '@/components/Logo';
@@ -12,10 +10,26 @@ import Logo from '@/components/Logo';
 export default function HomePage() {
   const router = useRouter();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Token contract address - update this when you have one
+  const tokenContract = 'COMING_SOON';
 
   const handleAnalyze = (address: string) => {
     setIsAnalyzing(true);
     router.push(`/analyze/${address}`);
+  };
+
+  const copyTokenContract = async () => {
+    if (tokenContract === 'COMING_SOON') return;
+
+    try {
+      await navigator.clipboard.writeText(tokenContract);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
   };
 
   return (
@@ -49,7 +63,7 @@ export default function HomePage() {
             {/* Main heading with festive styling */}
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 animate-slide-up text-balance">
               <span className="text-white">Unwrap Your </span>
-              <span className="nye-shimmer">2024</span>
+              <span className="nye-shimmer">2025</span>
               <br />
               <span className="festive-gradient-text">Solana Trading Year</span>
             </h1>
@@ -83,50 +97,47 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Example Cards Section */}
-      <section className="py-20 bg-dark-900/50">
+      {/* Token Contract Section */}
+      <section className="py-12 bg-dark-900/50 border-t border-dark-700">
         <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              <span className="text-white">See Your Trading </span>
-              <span className="festive-gradient-text">Highlights</span>
-            </h2>
-            <p className="text-lg text-gray-500 max-w-2xl mx-auto">
-              Get shareable cards showcasing your biggest wins, best trades, and more
-            </p>
-          </div>
+          <div className="max-w-2xl mx-auto text-center">
+            <h3 className="text-xl font-semibold mb-4">
+              <span className="festive-gradient-text">$WRAPPED</span>
+              <span className="text-white"> Token</span>
+            </h3>
 
-          <ExampleCards />
-        </div>
-      </section>
+            <div className="flex items-center gap-2 bg-dark-800/50 border border-dark-700 rounded-lg p-4 hover:border-festive-gold/30 transition-colors">
+              <div className="flex-1 text-left font-mono text-sm text-gray-400 overflow-x-auto">
+                {tokenContract}
+              </div>
 
-      {/* Features Section */}
-      <section className="py-20 bg-dark-950">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              <span className="text-white">Why </span>
-              <span className="festive-gradient-text">WalletWrapped?</span>
-            </h2>
-          </div>
-
-          <Features />
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="py-20 bg-dark-900/50">
-        <div className="container mx-auto px-4">
-          <div className="max-w-3xl mx-auto text-center">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-6 text-white">
-              Ready to unwrap your trading year?
-            </h2>
-            <p className="text-lg text-gray-500 mb-8">
-              Paste any Solana wallet address to get started
-            </p>
-
-            <div className="max-w-2xl mx-auto">
-              <WalletInput onAnalyze={handleAnalyze} isLoading={isAnalyzing} />
+              <button
+                onClick={copyTokenContract}
+                disabled={tokenContract === 'COMING_SOON'}
+                className={`px-4 py-2 rounded-lg font-medium transition-all flex items-center gap-2 ${
+                  tokenContract === 'COMING_SOON'
+                    ? 'bg-dark-700 text-gray-500 cursor-not-allowed'
+                    : copied
+                    ? 'bg-festive-gold/20 text-festive-gold'
+                    : 'bg-festive-gold/10 text-festive-gold hover:bg-festive-gold/20'
+                }`}
+              >
+                {copied ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
@@ -139,14 +150,11 @@ export default function HomePage() {
             <Logo size="small" />
 
             <div className="flex gap-6 text-sm text-gray-500">
-              <a href="https://github.com/BrowningVC/WalletWrapped" target="_blank" rel="noopener noreferrer" className="hover:text-festive-gold transition-colors">
-                GitHub
-              </a>
               <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="hover:text-festive-gold transition-colors">
                 Twitter
               </a>
               <a href="https://helius.dev" target="_blank" rel="noopener noreferrer" className="hover:text-festive-gold transition-colors">
-                Built with Helius
+                Powered by Helius
               </a>
             </div>
           </div>
