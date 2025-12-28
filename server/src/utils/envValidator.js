@@ -5,23 +5,31 @@
  */
 
 const requiredEnvVars = [
-  // Database
-  { name: 'POSTGRES_HOST', description: 'PostgreSQL host' },
-  { name: 'POSTGRES_PORT', description: 'PostgreSQL port', type: 'number' },
-  { name: 'POSTGRES_DB', description: 'PostgreSQL database name' },
-  { name: 'POSTGRES_USER', description: 'PostgreSQL username' },
-  { name: 'POSTGRES_PASSWORD', description: 'PostgreSQL password', allowEmpty: true },
-
-  // Redis
-  { name: 'REDIS_HOST', description: 'Redis host' },
-  { name: 'REDIS_PORT', description: 'Redis port', type: 'number' },
-
   // API Keys
   { name: 'HELIUS_API_KEY', description: 'Helius API key for Solana RPC' },
 
   // Server Configuration
   { name: 'PORT', description: 'Server port', type: 'number', default: 3002 },
   { name: 'NODE_ENV', description: 'Environment (development/production)', default: 'development' },
+];
+
+// Database can be configured via DATABASE_URL (Railway) or individual vars (local)
+const databaseEnvVars = [
+  { name: 'DATABASE_URL', description: 'PostgreSQL connection string (Railway)' },
+  // OR individual vars:
+  { name: 'POSTGRES_HOST', description: 'PostgreSQL host' },
+  { name: 'POSTGRES_PORT', description: 'PostgreSQL port', type: 'number' },
+  { name: 'POSTGRES_DB', description: 'PostgreSQL database name' },
+  { name: 'POSTGRES_USER', description: 'PostgreSQL username' },
+  { name: 'POSTGRES_PASSWORD', description: 'PostgreSQL password', allowEmpty: true },
+];
+
+// Redis can be configured via REDIS_URL (Railway) or individual vars (local)
+const redisEnvVars = [
+  { name: 'REDIS_URL', description: 'Redis connection string (Railway)' },
+  // OR individual vars:
+  { name: 'REDIS_HOST', description: 'Redis host' },
+  { name: 'REDIS_PORT', description: 'Redis port', type: 'number' },
 ];
 
 const optionalEnvVars = [
@@ -66,6 +74,37 @@ function validateEnv() {
     if (value || envVar.default || envVar.allowEmpty) {
       console.log(`✓ ${envVar.name}: ${value ? '***' : envVar.default ? `${envVar.default} (default)` : '(empty)'}`);
     }
+  }
+
+  // Check database configuration (DATABASE_URL or individual vars)
+  console.log('\n--- Database Configuration ---\n');
+  const hasDbUrl = !!process.env.DATABASE_URL;
+  const hasDbVars = process.env.POSTGRES_HOST && process.env.POSTGRES_DB && process.env.POSTGRES_USER;
+
+  if (hasDbUrl) {
+    console.log(`✓ DATABASE_URL: *** (connection string)`);
+  } else if (hasDbVars) {
+    console.log(`✓ POSTGRES_HOST: ${process.env.POSTGRES_HOST}`);
+    console.log(`✓ POSTGRES_PORT: ${process.env.POSTGRES_PORT || 5432}`);
+    console.log(`✓ POSTGRES_DB: ${process.env.POSTGRES_DB}`);
+    console.log(`✓ POSTGRES_USER: ***`);
+    console.log(`✓ POSTGRES_PASSWORD: ***`);
+  } else {
+    errors.push('Missing database configuration: Set DATABASE_URL or POSTGRES_HOST/DB/USER/PASSWORD');
+  }
+
+  // Check Redis configuration (REDIS_URL or individual vars)
+  console.log('\n--- Redis Configuration ---\n');
+  const hasRedisUrl = !!process.env.REDIS_URL;
+  const hasRedisVars = !!process.env.REDIS_HOST;
+
+  if (hasRedisUrl) {
+    console.log(`✓ REDIS_URL: *** (connection string)`);
+  } else if (hasRedisVars) {
+    console.log(`✓ REDIS_HOST: ${process.env.REDIS_HOST}`);
+    console.log(`✓ REDIS_PORT: ${process.env.REDIS_PORT || 6379}`);
+  } else {
+    errors.push('Missing Redis configuration: Set REDIS_URL or REDIS_HOST/PORT');
   }
 
   // Check optional variables
