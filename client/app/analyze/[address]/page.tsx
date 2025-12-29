@@ -126,9 +126,13 @@ export default function AnalyzePage() {
 
   const [progress, setProgress] = useState(0);
   const [displayProgress, setDisplayProgress] = useState(0);
-  const [statusMessage, setStatusMessage] = useState('Initializing analysis...');
+  const [statusMessage, setStatusMessage] = useState('Connecting to server...');
   const [socket, setSocket] = useState<Socket | null>(null);
   const [error, setError] = useState('');
+
+  // Simulated progress for initial connection phase (0-3%)
+  // This provides immediate visual feedback while waiting for server
+  const [simulatedProgress, setSimulatedProgress] = useState(0);
 
   const [currentStage, setCurrentStage] = useState('initializing');
   const [currentStep, setCurrentStep] = useState(1);
@@ -168,6 +172,34 @@ export default function AnalyzePage() {
     };
     requestAnimationFrame(waitForPaint);
   }, []);
+
+  // Simulated progress animation during initial connection phase
+  // Provides immediate visual feedback while waiting for server response
+  useEffect(() => {
+    // Only run simulation when real progress is 0
+    if (progress > 0 || error) return;
+
+    const messages = [
+      { progress: 0.5, message: 'Connecting to server...', delay: 0 },
+      { progress: 1, message: 'Establishing secure connection...', delay: 800 },
+      { progress: 1.5, message: 'Preparing analysis...', delay: 1600 },
+      { progress: 2, message: 'Connecting to Solana network...', delay: 2500 },
+      { progress: 2.5, message: 'Initializing wallet scanner...', delay: 3500 },
+      { progress: 3, message: 'Starting transaction fetch...', delay: 5000 },
+    ];
+
+    const timers: NodeJS.Timeout[] = [];
+
+    messages.forEach(({ progress: p, message, delay }) => {
+      const timer = setTimeout(() => {
+        setSimulatedProgress(p);
+        setStatusMessage(message);
+      }, delay);
+      timers.push(timer);
+    });
+
+    return () => timers.forEach(t => clearTimeout(t));
+  }, [progress, error]);
 
   // Handle delayed redirect - ensures user sees progress animation
   useEffect(() => {
@@ -210,23 +242,26 @@ export default function AnalyzePage() {
     return () => clearInterval(interval);
   }, [secondsSinceUpdate]);
 
-  useEffect(() => {
-    if (displayProgress >= progress) return;
+  // Calculate effective progress (use simulated when real is 0)
+  const effectiveProgress = progress > 0 ? progress : simulatedProgress;
 
-    const step = Math.max(0.5, (progress - displayProgress) / 20);
+  useEffect(() => {
+    if (displayProgress >= effectiveProgress) return;
+
+    const step = Math.max(0.3, (effectiveProgress - displayProgress) / 20);
     const interval = setInterval(() => {
       setDisplayProgress(prev => {
         const next = prev + step;
-        if (next >= progress) {
+        if (next >= effectiveProgress) {
           clearInterval(interval);
-          return progress;
+          return effectiveProgress;
         }
         return next;
       });
     }, 50);
 
     return () => clearInterval(interval);
-  }, [progress, displayProgress]);
+  }, [effectiveProgress, displayProgress]);
 
   // Fallback polling for status when WebSocket events don't arrive
   // Use a ref to track current progress to avoid stale closure issues

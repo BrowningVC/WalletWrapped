@@ -194,7 +194,11 @@ async function runAnalysis(walletAddress, incremental = false) {
     await DatabaseQueries.createAnalysis(walletAddress);
     await DatabaseQueries.updateAnalysisProgress(walletAddress, 'processing', 0);
 
-    await emitProgress(walletAddress, 0, 'Initializing analysis...');
+    // Emit early progress updates to provide immediate visual feedback
+    // These happen before the actual analysis starts
+    await emitProgress(walletAddress, 1, 'Initializing analysis...');
+    await emitProgress(walletAddress, 2, 'Connecting to Solana network...');
+    await emitProgress(walletAddress, 3, 'Preparing to fetch transactions...');
 
     // Check for cancellation
     if (abortController.signal.aborted) {
