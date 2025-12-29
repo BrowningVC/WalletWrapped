@@ -59,65 +59,91 @@ const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
 /**
  * Make a Helius API POST request (for enhanced transactions)
  * Wrapped with semaphore to prevent rate limiting across concurrent users
+ * Includes automatic retry with exponential backoff
  */
-async function heliusPostRequest(endpoint, body = {}) {
+async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
     const url = `${HELIUS_API_URL}${endpoint}?api-key=${HELIUS_API_KEY}`;
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(body)
+        });
 
-    if (!response.ok) {
-      // Handle rate limit specifically
-      if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After') || 1;
-        await new Promise(r => setTimeout(r, retryAfter * 1000));
-        throw new Error('Rate limited - will retry');
+        if (!response.ok) {
+          // Handle rate limit specifically with retry
+          if (response.status === 429) {
+            const retryAfter = parseInt(response.headers.get('Retry-After')) || (2 ** attempt);
+            console.log(`Rate limited, waiting ${retryAfter}s before retry ${attempt + 1}/${maxRetries}...`);
+            await new Promise(r => setTimeout(r, retryAfter * 1000));
+            if (attempt < maxRetries) continue; // Retry
+            throw new Error('Rate limited after max retries');
+          }
+          throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
+        }
+        return response.json();
+      } catch (error) {
+        if (attempt >= maxRetries) throw error;
+        // Exponential backoff for network errors
+        const delay = (2 ** attempt) * 1000;
+        console.log(`Request failed, retrying in ${delay}ms... (${error.message})`);
+        await new Promise(r => setTimeout(r, delay));
       }
-      throw new Error(`Helius API error: ${response.status} ${response.statusText}`);
     }
-    return response.json();
   });
 }
 
 /**
  * Make a Helius RPC request
  * Wrapped with semaphore to prevent rate limiting across concurrent users
+ * Includes automatic retry with exponential backoff
  */
-async function heliusRPC(method, params) {
+async function heliusRPC(method, params, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
-    const response = await fetch(HELIUS_RPC_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method,
-        params
-      })
-    });
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(HELIUS_RPC_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method,
+            params
+          })
+        });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        const retryAfter = response.headers.get('Retry-After') || 1;
-        await new Promise(r => setTimeout(r, retryAfter * 1000));
-        throw new Error('Rate limited - will retry');
+        if (!response.ok) {
+          if (response.status === 429) {
+            const retryAfter = parseInt(response.headers.get('Retry-After')) || (2 ** attempt);
+            console.log(`RPC rate limited, waiting ${retryAfter}s before retry ${attempt + 1}/${maxRetries}...`);
+            await new Promise(r => setTimeout(r, retryAfter * 1000));
+            if (attempt < maxRetries) continue; // Retry
+            throw new Error('RPC rate limited after max retries');
+          }
+          throw new Error(`Helius RPC error: ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (data.error) {
+          throw new Error(`RPC error: ${data.error.message}`);
+        }
+        return data.result;
+      } catch (error) {
+        if (attempt >= maxRetries) throw error;
+        // Exponential backoff for network errors
+        const delay = (2 ** attempt) * 1000;
+        console.log(`RPC request failed, retrying in ${delay}ms... (${error.message})`);
+        await new Promise(r => setTimeout(r, delay));
       }
-      throw new Error(`Helius RPC error: ${response.status}`);
     }
-
-    const data = await response.json();
-    if (data.error) {
-      throw new Error(`RPC error: ${data.error.message}`);
-    }
-    return data.result;
   });
 }
 
