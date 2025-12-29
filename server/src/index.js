@@ -47,8 +47,8 @@ const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 // All allowed client origins for CORS
 const ALLOWED_ORIGINS = [
   CLIENT_URL,
-  'https://walletwrapped.com',
-  'https://www.walletwrapped.com',
+  'https://walletwrapped.io',
+  'https://www.walletwrapped.io',
   'https://wallet-wrapped-client-production.up.railway.app',  // Railway client
 ];
 
@@ -81,7 +81,7 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'"], // unsafe-inline needed for Tailwind
       imgSrc: ["'self'", "data:", "https:", "blob:"], // Allow external images
       fontSrc: ["'self'", "data:"],
-      connectSrc: ["'self'", CLIENT_URL, "https://mainnet.helius-rpc.com", "https://api.helius.xyz"],
+      connectSrc: ["'self'", ...ALLOWED_ORIGINS, "https://mainnet.helius-rpc.com", "https://api.helius.xyz"],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],

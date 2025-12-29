@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 
-// Production server URL
-const PRODUCTION_SERVER = 'https://wallet-wrapped-server-production.up.railway.app';
+// Production server URL - use custom domain API
+const PRODUCTION_SERVER = 'https://api.walletwrapped.io';
 
 const nextConfig = {
   reactStrictMode: true,
@@ -18,7 +18,7 @@ const nextConfig = {
 
   // Image optimization
   images: {
-    domains: ['localhost', 'walletwrapped.com'],
+    domains: ['localhost', 'walletwrapped.io', 'www.walletwrapped.io', 'api.walletwrapped.io'],
     formats: ['image/avif', 'image/webp'],
   },
 
