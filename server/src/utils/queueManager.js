@@ -109,14 +109,24 @@ class QueueManager {
 
   /**
    * Check if we should queue the request or process immediately
+   * Uses a timeout to prevent blocking if Redis is slow
    */
   static async shouldQueue() {
     try {
-      const activeCount = await analysisQueue.getActiveCount();
+      // Add timeout to prevent hanging if Redis is slow
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Queue check timeout')), 5000)
+      );
+
+      const activeCount = await Promise.race([
+        analysisQueue.getActiveCount(),
+        timeoutPromise
+      ]);
+
       return activeCount >= MAX_CONCURRENT;
     } catch (error) {
-      console.error('Error checking queue status:', error);
-      return false; // Fail open - allow request if Redis is down
+      console.error('Error checking queue status:', error.message);
+      return false; // Fail open - allow request if Redis is slow/down
     }
   }
 
