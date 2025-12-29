@@ -44,6 +44,55 @@ function TransactionStream({ isActive }: { isActive: boolean }) {
   );
 }
 
+// SVG Icons for stages
+const StageIcon = ({ stage, className = "w-4 h-4" }: { stage: string; className?: string }) => {
+  switch (stage) {
+    case 'connect':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+        </svg>
+      );
+    case 'scan':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.14 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+        </svg>
+      );
+    case 'parse':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+      );
+    case 'calculate':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+        </svg>
+      );
+    case 'save':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+        </svg>
+      );
+    case 'generate':
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+        </svg>
+      );
+    default:
+      return (
+        <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      );
+  }
+};
+
 // Particle burst on stage completion
 function StageBurst({ trigger }: { trigger: number }) {
   const [particles, setParticles] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
@@ -95,14 +144,14 @@ interface ProgressData {
   startTime?: number | null;
 }
 
-// Analysis stage definitions with icons
+// Analysis stage definitions with icon keys
 const stageConfig = [
-  { key: 'initializing', label: 'Connect', description: 'Connecting to Solana blockchain', icon: '🔗' },
-  { key: 'fetching', label: 'Scan', description: 'Scanning your wallet history', icon: '📡' },
-  { key: 'parsing', label: 'Parse', description: 'Processing transaction data', icon: '⚙️' },
-  { key: 'calculating', label: 'Calculate', description: 'Computing your P&L metrics', icon: '📊' },
-  { key: 'saving', label: 'Save', description: 'Securing your results', icon: '💾' },
-  { key: 'highlights', label: 'Generate', description: 'Creating your highlight cards', icon: '✨' },
+  { key: 'initializing', label: 'Connect', description: 'Connecting to Solana blockchain', iconKey: 'connect' },
+  { key: 'fetching', label: 'Scan', description: 'Scanning your wallet history', iconKey: 'scan' },
+  { key: 'parsing', label: 'Parse', description: 'Processing transaction data', iconKey: 'parse' },
+  { key: 'calculating', label: 'Calculate', description: 'Computing your P&L metrics', iconKey: 'calculate' },
+  { key: 'saving', label: 'Save', description: 'Securing your results', iconKey: 'save' },
+  { key: 'highlights', label: 'Generate', description: 'Creating your highlight cards', iconKey: 'generate' },
 ];
 
 // Progress encouragement messages that rotate every 4 seconds
@@ -700,8 +749,11 @@ export default function AnalyzePage() {
               )}
             </div>
             {elapsedTime >= 10 && displayProgress < 90 && (
-              <p className="text-xs text-gray-400 mt-2 animate-fade-in">
-                💡 {funFacts[funFactIndex]}
+              <p className="text-xs text-gray-400 mt-2 animate-fade-in flex items-center justify-center gap-1.5">
+                <svg className="w-3.5 h-3.5 text-festive-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {funFacts[funFactIndex]}
               </p>
             )}
           </div>
@@ -863,7 +915,9 @@ export default function AnalyzePage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                       ) : (
-                        <span className={isActive ? 'animate-bounce' : ''}>{stage.icon}</span>
+                        <div className={`${isActive ? 'animate-bounce' : ''} ${isActive ? 'text-festive-gold' : 'text-gray-500'}`}>
+                          <StageIcon stage={stage.iconKey} className="w-4 h-4" />
+                        </div>
                       )}
                     </div>
 
@@ -902,8 +956,20 @@ export default function AnalyzePage() {
               </div>
             </div>
             <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center group hover:border-festive-purple/30 transition-colors">
-              <div className="text-xl font-bold text-festive-purple">
-                {displayProgress >= 85 ? '✨' : displayProgress >= 50 ? '📊' : '🔍'}
+              <div className="flex justify-center">
+                {displayProgress >= 85 ? (
+                  <svg className="w-6 h-6 text-festive-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                ) : displayProgress >= 50 ? (
+                  <svg className="w-6 h-6 text-festive-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6 text-festive-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                  </svg>
+                )}
               </div>
               <div className="text-xs text-gray-400 mt-1">
                 {displayProgress >= 85 ? 'Almost Ready!' : displayProgress >= 50 ? 'Calculating' : 'Scanning'}
@@ -931,8 +997,8 @@ export default function AnalyzePage() {
         {/* Current stage description card */}
         <div className="mt-6 bg-dark-900/60 backdrop-blur-sm border border-dark-700/50 rounded-2xl p-5">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-festive-gold/20 via-festive-pink/20 to-festive-purple/20 flex items-center justify-center text-2xl">
-              {stageConfig[currentStageIndex]?.icon || '⏳'}
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-festive-gold/20 via-festive-pink/20 to-festive-purple/20 flex items-center justify-center text-festive-gold">
+              <StageIcon stage={stageConfig[currentStageIndex]?.iconKey || 'connect'} className="w-6 h-6" />
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
@@ -954,7 +1020,7 @@ export default function AnalyzePage() {
             <div className="mt-4 pt-4 border-t border-dark-700/50 flex items-center justify-between">
               <span className="text-xs text-gray-500">Next up:</span>
               <div className="flex items-center gap-2 text-xs text-gray-400">
-                <span>{stageConfig[currentStageIndex + 1]?.icon}</span>
+                <StageIcon stage={stageConfig[currentStageIndex + 1]?.iconKey || 'scan'} className="w-3.5 h-3.5" />
                 <span>{stageConfig[currentStageIndex + 1]?.label}</span>
               </div>
             </div>
