@@ -308,13 +308,18 @@ async function runAnalysis(walletAddress, incremental = false) {
     // This ensures cards are ready when user arrives at highlights page
     // Cards are generated in parallel for speed, but we wait for all to complete
     const clientUrl = process.env.CLIENT_URL || 'https://walletwrapped.com';
+    console.log(`[Card Gen] CLIENT_URL env: ${process.env.CLIENT_URL || '(not set, using default)'}`);
+    console.log(`[Card Gen] Using clientUrl: ${clientUrl}`);
 
     // Helper to generate a single card with timeout
     const generateCard = async (cardIndex) => {
+      const startTime = Date.now();
       try {
         const url = cardIndex === 'summary'
           ? `${clientUrl}/api/card/${walletAddress}/summary`
           : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
+
+        console.log(`[Card Gen] Starting card ${cardIndex} from ${url}`);
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per card (reduced)
@@ -326,10 +331,16 @@ async function runAnalysis(walletAddress, incremental = false) {
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
           await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
-          return { cardIndex, success: true };
+          const duration = Date.now() - startTime;
+          console.log(`[Card Gen] Card ${cardIndex} cached successfully (${buffer.length} bytes, ${duration}ms)`);
+          return { cardIndex, success: true, duration };
         }
+        const duration = Date.now() - startTime;
+        console.log(`[Card Gen] Card ${cardIndex} failed: HTTP ${response.status} (${duration}ms)`);
         return { cardIndex, success: false, error: `HTTP ${response.status}` };
       } catch (err) {
+        const duration = Date.now() - startTime;
+        console.log(`[Card Gen] Card ${cardIndex} error: ${err.message} (${duration}ms)`);
         return { cardIndex, success: false, error: err.message };
       }
     };

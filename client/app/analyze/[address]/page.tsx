@@ -95,28 +95,35 @@ interface ProgressData {
   startTime?: number | null;
 }
 
-// Analysis stage definitions
+// Analysis stage definitions with icons
 const stageConfig = [
-  { key: 'initializing', label: 'Initializing', description: 'Setting up analysis' },
-  { key: 'fetching', label: 'Fetching', description: 'Downloading transactions from Solana' },
-  { key: 'parsing', label: 'Parsing', description: 'Processing transaction data' },
-  { key: 'calculating', label: 'Calculating', description: 'Computing P&L - this may take a moment for large wallets' },
-  { key: 'saving', label: 'Saving', description: 'Storing results in database' },
-  { key: 'highlights', label: 'Highlights', description: 'Generating your wrapped cards' },
+  { key: 'initializing', label: 'Connect', description: 'Connecting to Solana blockchain', icon: '🔗' },
+  { key: 'fetching', label: 'Scan', description: 'Scanning your wallet history', icon: '📡' },
+  { key: 'parsing', label: 'Parse', description: 'Processing transaction data', icon: '⚙️' },
+  { key: 'calculating', label: 'Calculate', description: 'Computing your P&L metrics', icon: '📊' },
+  { key: 'saving', label: 'Save', description: 'Securing your results', icon: '💾' },
+  { key: 'highlights', label: 'Generate', description: 'Creating your highlight cards', icon: '✨' },
 ];
 
-// Progress encouragement messages that rotate every 5 seconds
+// Progress encouragement messages that rotate every 4 seconds
 const progressMessages = [
-  "Crunching the numbers...",
-  "Almost there, hang tight...",
-  "Processing your trades...",
-  "Getting closer...",
-  "Just a bit longer...",
-  "Finalizing calculations...",
-  "Wrapping up your results...",
-  "Nearly done...",
-  "Polishing the details...",
-  "Working hard on this...",
+  "Analyzing your trading patterns...",
+  "Calculating realized gains...",
+  "Finding your best trades...",
+  "Computing win rates...",
+  "Identifying top performers...",
+  "Measuring portfolio growth...",
+  "Detecting trading streaks...",
+  "Wrapping up the numbers...",
+];
+
+// Fun facts to show during long waits
+const funFacts = [
+  "The average Solana wallet has 847 transactions",
+  "Top traders check their P&L 12x per day",
+  "SOL has processed over 200 billion transactions",
+  "The best day to trade is statistically Tuesday",
+  "Most profitable trades happen in the first hour",
 ];
 
 export default function AnalyzePage() {
@@ -143,6 +150,7 @@ export default function AnalyzePage() {
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
   const [progressMessageIndex, setProgressMessageIndex] = useState(0);
+  const [funFactIndex, setFunFactIndex] = useState(() => Math.floor(Math.random() * funFacts.length));
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [pageReady, setPageReady] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false); // Track when POST completes
@@ -237,16 +245,27 @@ export default function AnalyzePage() {
     return () => clearInterval(interval);
   }, [startTime, lastUpdateTime]);
 
-  // Rotate progress messages every 5 seconds when analysis is taking a while
+  // Rotate progress messages every 4 seconds when analysis is taking a while
   useEffect(() => {
-    if (secondsSinceUpdate < 10) return; // Only show messages if update is taking a while
+    if (secondsSinceUpdate < 5) return; // Only show messages if update is taking a while
 
     const interval = setInterval(() => {
       setProgressMessageIndex((prev) => (prev + 1) % progressMessages.length);
-    }, 5000);
+    }, 4000);
 
     return () => clearInterval(interval);
   }, [secondsSinceUpdate]);
+
+  // Rotate fun facts every 8 seconds
+  useEffect(() => {
+    if (elapsedTime < 10) return; // Only show after 10 seconds
+
+    const interval = setInterval(() => {
+      setFunFactIndex((prev) => (prev + 1) % funFacts.length);
+    }, 8000);
+
+    return () => clearInterval(interval);
+  }, [elapsedTime]);
 
   // Calculate effective progress (use simulated when real is 0)
   const effectiveProgress = progress > 0 ? progress : simulatedProgress;
@@ -642,15 +661,49 @@ export default function AnalyzePage() {
           {/* Stage completion burst */}
           <StageBurst trigger={currentStep} />
 
-          {/* Time estimate banner */}
-          <div className="bg-festive-gold/10 border border-festive-gold/20 rounded-xl p-4 mb-6 text-center">
-            <div className="flex items-center justify-center gap-2 text-festive-gold">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span className="font-medium">Analysis typically takes 15-60 seconds</span>
+          {/* Dynamic status banner */}
+          <div className={`rounded-xl p-4 mb-6 text-center transition-all duration-500 ${
+            displayProgress >= 90
+              ? 'bg-profit-500/10 border border-profit-500/20'
+              : displayProgress >= 50
+                ? 'bg-festive-pink/10 border border-festive-pink/20'
+                : 'bg-festive-gold/10 border border-festive-gold/20'
+          }`}>
+            <div className={`flex items-center justify-center gap-2 ${
+              displayProgress >= 90 ? 'text-profit-500' : displayProgress >= 50 ? 'text-festive-pink' : 'text-festive-gold'
+            }`}>
+              {displayProgress >= 90 ? (
+                <>
+                  <svg className="w-5 h-5 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="font-medium">Almost done! Finishing up...</span>
+                </>
+              ) : displayProgress >= 50 ? (
+                <>
+                  <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="font-medium">Crunching the numbers...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span className="font-medium">
+                    {transactionsTotal && transactionsTotal > 5000
+                      ? 'Large wallet detected - this may take a minute'
+                      : 'Analysis typically takes 15-45 seconds'}
+                  </span>
+                </>
+              )}
             </div>
-            <p className="text-xs text-gray-400 mt-1">Duration depends on wallet transaction history</p>
+            {elapsedTime >= 10 && displayProgress < 90 && (
+              <p className="text-xs text-gray-400 mt-2 animate-fade-in">
+                💡 {funFacts[funFactIndex]}
+              </p>
+            )}
           </div>
 
           {/* Header */}
@@ -760,66 +813,63 @@ export default function AnalyzePage() {
 
           {/* Status message with activity indicator */}
           <div className="text-center mb-6">
-            <div className="flex items-center justify-center gap-2">
-              {/* Activity pulse - shows during calculating or saving stages */}
-              {(currentStage === 'calculating' || currentStage === 'saving') && (
+            <div className="flex items-center justify-center gap-3">
+              {/* Activity pulse - always show during active analysis */}
+              {displayProgress > 0 && displayProgress < 100 && (
                 <div className="flex gap-1">
-                  <span className="w-1.5 h-1.5 bg-festive-gold rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-festive-pink rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-festive-purple rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  <span className="w-2 h-2 bg-festive-gold rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-2 h-2 bg-festive-pink rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-2 h-2 bg-festive-purple rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               )}
-              <p className="text-lg text-gray-300">
+              <p className="text-lg text-gray-200 font-medium">
                 {statusMessage}
               </p>
             </div>
-            {statusMessage.includes('Generating your year into PNL cards') && (
-              <p className="text-sm text-gray-500 italic mt-1">
-                It only takes a few seconds...
-              </p>
-            )}
-            {/* Activity timestamp - shows last update time during long operations */}
-            {(currentStage === 'calculating' || currentStage === 'saving') && secondsSinceUpdate > 0 && (
-              <p className="text-xs text-gray-600 mt-2">
-                Last update: {secondsSinceUpdate < 60 ? `${secondsSinceUpdate}s ago` : `${Math.floor(secondsSinceUpdate / 60)}m ${secondsSinceUpdate % 60}s ago`}
-                {secondsSinceUpdate > 10 && (
-                  <span className="text-festive-gold ml-2 animate-pulse">
-                    {progressMessages[progressMessageIndex]}
-                  </span>
-                )}
+            {/* Rotating encouragement messages during slow phases */}
+            {secondsSinceUpdate >= 5 && displayProgress < 90 && (
+              <p className="text-sm text-festive-gold/80 mt-2 animate-pulse transition-all duration-300">
+                {progressMessages[progressMessageIndex]}
               </p>
             )}
           </div>
 
           {/* Stage Progress Indicators */}
           <div className="mb-6">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center relative">
+              {/* Connection line behind circles */}
+              <div className="absolute top-4 left-[8%] right-[8%] h-0.5 bg-dark-700">
+                <div
+                  className="h-full bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple transition-all duration-500"
+                  style={{ width: `${Math.min(100, (currentStageIndex / (stageConfig.length - 1)) * 100)}%` }}
+                />
+              </div>
               {stageConfig.map((stage, index) => {
                 const isActive = index === currentStageIndex;
                 const isComplete = index < currentStageIndex;
 
                 return (
-                  <div key={stage.key} className="flex flex-col items-center flex-1">
+                  <div key={stage.key} className="flex flex-col items-center flex-1 relative z-10">
                     {/* Stage circle */}
-                    <div className={`relative z-10 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all duration-300 ${
                       isComplete
-                        ? 'bg-gradient-to-r from-festive-gold to-festive-pink text-dark-900'
+                        ? 'bg-gradient-to-r from-festive-gold to-festive-pink shadow-lg shadow-festive-gold/20'
                         : isActive
-                          ? 'bg-festive-gold/20 text-festive-gold ring-2 ring-festive-gold animate-pulse'
-                          : 'bg-dark-700 text-gray-500'
+                          ? 'bg-dark-800 ring-2 ring-festive-gold ring-offset-2 ring-offset-dark-900 animate-pulse'
+                          : 'bg-dark-800 border border-dark-600'
                     }`}>
                       {isComplete ? (
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                       ) : (
-                        index + 1
+                        <span className={isActive ? 'animate-bounce' : ''}>{stage.icon}</span>
                       )}
                     </div>
 
                     {/* Stage label */}
-                    <div className={`mt-2 text-xs text-center transition-colors duration-300 ${
-                      isActive ? 'text-festive-gold' : isComplete ? 'text-gray-400' : 'text-gray-600'
+                    <div className={`mt-2 text-xs text-center font-medium transition-colors duration-300 ${
+                      isActive ? 'text-festive-gold' : isComplete ? 'text-gray-300' : 'text-gray-600'
                     }`}>
                       {stage.label}
                     </div>
@@ -839,19 +889,25 @@ export default function AnalyzePage() {
 
           {/* Stats boxes */}
           <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center">
+            <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center group hover:border-festive-gold/30 transition-colors">
               <div className="text-xl font-bold text-festive-gold">{formatTime(elapsedTime)}</div>
               <div className="text-xs text-gray-400 mt-1">Elapsed</div>
             </div>
-            <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center">
+            <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center group hover:border-festive-pink/30 transition-colors">
               <div className="text-xl font-bold text-white">
-                {transactionsFetched !== null ? formatNumber(transactionsFetched) : '-'}
+                {transactionsTotal ? formatNumber(transactionsTotal) : transactionsFetched !== null ? formatNumber(transactionsFetched) : '-'}
               </div>
-              <div className="text-xs text-gray-400 mt-1">Transactions</div>
+              <div className="text-xs text-gray-400 mt-1">
+                {transactionsTotal ? 'Total Txns' : 'Transactions'}
+              </div>
             </div>
-            <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center">
-              <div className="text-xl font-bold text-festive-purple">6</div>
-              <div className="text-xs text-gray-400 mt-1">Highlights</div>
+            <div className="bg-dark-800/50 border border-dark-600/50 rounded-xl p-3 text-center group hover:border-festive-purple/30 transition-colors">
+              <div className="text-xl font-bold text-festive-purple">
+                {displayProgress >= 85 ? '✨' : displayProgress >= 50 ? '📊' : '🔍'}
+              </div>
+              <div className="text-xs text-gray-400 mt-1">
+                {displayProgress >= 85 ? 'Almost Ready!' : displayProgress >= 50 ? 'Calculating' : 'Scanning'}
+              </div>
             </div>
           </div>
 
@@ -873,27 +929,36 @@ export default function AnalyzePage() {
         </div>
 
         {/* Current stage description card */}
-        <div className="mt-6 bg-dark-900/60 backdrop-blur-sm border border-dark-700/50 rounded-2xl p-6">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full bg-gradient-to-r from-festive-gold/20 to-festive-pink/20 flex items-center justify-center">
-              <svg className="w-5 h-5 text-festive-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+        <div className="mt-6 bg-dark-900/60 backdrop-blur-sm border border-dark-700/50 rounded-2xl p-5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-festive-gold/20 via-festive-pink/20 to-festive-purple/20 flex items-center justify-center text-2xl">
+              {stageConfig[currentStageIndex]?.icon || '⏳'}
             </div>
-            <div>
-              <h3 className="font-bold text-white">
-                {stageConfig[currentStageIndex]?.label || 'Processing'}
-              </h3>
-              <p className="text-sm text-gray-400">
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-white">
+                  {stageConfig[currentStageIndex]?.label || 'Processing'}
+                </h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-festive-gold/10 text-festive-gold">
+                  Step {currentStep}/6
+                </span>
+              </div>
+              <p className="text-sm text-gray-400 mt-0.5">
                 {stageConfig[currentStageIndex]?.description || 'Working on your analysis...'}
               </p>
             </div>
           </div>
 
-          {/* Tip */}
-          <div className="text-xs text-gray-500 text-center mt-4 pt-4 border-t border-dark-700/50">
-            Your <span className="text-festive-gold">2025</span> highlights will be ready once analysis completes
-          </div>
+          {/* What's coming next */}
+          {currentStageIndex < stageConfig.length - 1 && (
+            <div className="mt-4 pt-4 border-t border-dark-700/50 flex items-center justify-between">
+              <span className="text-xs text-gray-500">Next up:</span>
+              <div className="flex items-center gap-2 text-xs text-gray-400">
+                <span>{stageConfig[currentStageIndex + 1]?.icon}</span>
+                <span>{stageConfig[currentStageIndex + 1]?.label}</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>

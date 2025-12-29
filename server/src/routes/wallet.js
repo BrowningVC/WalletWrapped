@@ -466,8 +466,11 @@ router.get('/wallet/:address/card/:index', async (req, res) => {
     const imageBuffer = await CacheManager.getCardImage(address, index);
 
     if (!imageBuffer) {
+      console.log(`[Card Cache] MISS for ${address.slice(0, 8)}... card ${index}`);
       return res.status(404).json({ error: 'Card image not cached' });
     }
+
+    console.log(`[Card Cache] HIT for ${address.slice(0, 8)}... card ${index} (${imageBuffer.length} bytes)`);
 
     // Return PNG image
     res.set({
