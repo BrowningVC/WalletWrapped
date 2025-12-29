@@ -18,19 +18,19 @@ if (dbUrl) {
 const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: isProduction ? 10 : 20,  // Railway shared Postgres has ~20 max connections
-  min: isProduction ? 2 : 5,    // Keep fewer warm connections on Railway
-  idleTimeoutMillis: 30000,     // Close idle connections after 30s
-  connectionTimeoutMillis: 10000, // 10s to acquire connection
-  statement_timeout: 120000,    // 2 minutes for large batch inserts (30k txs)
+  max: isProduction ? 5 : 10,   // Railway shared Postgres has ~20 max connections
+  min: 1,                        // Minimal warm connections
+  idleTimeoutMillis: 10000,      // Close idle connections quickly (10s)
+  connectionTimeoutMillis: 5000, // 5s to acquire connection
+  statement_timeout: 120000,     // 2 minutes for large batch inserts
   application_name: 'walletwrapped',
   ssl: isProduction ? { rejectUnauthorized: false } : false
 });
 
-// Handle pool errors
+// Handle pool errors - log but don't crash immediately
 pool.on('error', (err) => {
-  console.error('Unexpected database error:', err);
-  process.exit(-1);
+  console.error('Database pool error:', err.message);
+  // Don't exit - let the app try to recover
 });
 
 // Test connection on startup
