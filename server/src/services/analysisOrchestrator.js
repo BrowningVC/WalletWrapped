@@ -314,12 +314,19 @@ async function runAnalysis(walletAddress, incremental = false) {
 
       // Fetch highlights from database for card generation
       const dbHighlights = await DatabaseQueries.getHighlights(walletAddress);
+      console.log(`[Card Gen] Found ${dbHighlights?.length || 0} highlights in database`);
+
+      if (!dbHighlights || dbHighlights.length === 0) {
+        console.error(`[Card Gen] No highlights found for ${walletAddress} - skipping card generation`);
+        throw new Error('No highlights available for card generation');
+      }
 
       // Reorder highlights to match client UI (overall_pnl last)
       const reorderedHighlights = [
         ...dbHighlights.filter(h => h.highlight_type !== 'overall_pnl'),
         ...dbHighlights.filter(h => h.highlight_type === 'overall_pnl'),
       ];
+      console.log(`[Card Gen] Reordered to ${reorderedHighlights.length} highlights`);
 
       // Generate individual cards (0-5) in parallel
       const cardPromises = reorderedHighlights.slice(0, 6).map(async (highlight, index) => {
@@ -351,6 +358,7 @@ async function runAnalysis(walletAddress, incremental = false) {
         }
       })());
 
+      console.log(`[Card Gen] Starting generation of ${cardPromises.length} cards...`);
       const cardResults = await Promise.all(cardPromises);
       const successCount = cardResults.filter(r => r.success).length;
       const failedCards = cardResults.filter(r => !r.success);
