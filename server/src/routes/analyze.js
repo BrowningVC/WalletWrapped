@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const rateLimit = require('express-rate-limit');
 const { PublicKey } = require('@solana/web3.js');
 const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
@@ -8,6 +9,23 @@ const AnalysisOrchestrator = require('../services/analysisOrchestrator');
 const { validateCSRFToken } = require('../middleware/csrf');
 const QueueManager = require('../utils/queueManager');
 const SystemMonitor = require('../utils/monitor');
+
+// Rate limiter for status endpoint - 60 requests per minute per IP
+// This prevents excessive polling while still allowing normal client behavior
+const statusRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute (1 per second average)
+  message: {
+    error: 'Too many status requests',
+    message: 'Please slow down. Max 60 status checks per minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Rate limit by IP + wallet address to prevent abuse
+    return `${req.ip}:${req.params.address || 'unknown'}`;
+  }
+});
 
 /**
  * Validate Solana wallet address
@@ -109,23 +127,36 @@ router.post('/analyze', validateCSRFToken, async (req, res) => {
       }
     }
 
-    // Check in-memory first (instant) before hitting Redis
-    if (AnalysisOrchestrator.isAnalysisActive(trimmedAddress)) {
-      return res.json({
-        status: 'processing',
-        progress: 0,
-        message: 'Analysis already in progress'
-      });
-    }
-
-    // Try to acquire lock - if fails, it's likely stale (we checked memory above)
+    // CRITICAL: Acquire Redis lock FIRST to prevent race condition
+    // If two requests arrive simultaneously, both could pass the in-memory check
+    // and then both acquire locks, causing duplicate analyses
     const hasLock = await RateLimiter.preventDuplicateAnalysis(trimmedAddress);
     if (!hasLock) {
-      // Lock exists but no in-memory analysis - stale lock, force acquire
+      // Lock already exists - check if it's a real active analysis or stale
+      if (AnalysisOrchestrator.isAnalysisActive(trimmedAddress)) {
+        // Real active analysis
+        return res.json({
+          status: 'processing',
+          progress: 0,
+          message: 'Analysis already in progress'
+        });
+      }
+
+      // No in-memory analysis but lock exists - stale lock, force acquire
       console.log(`Releasing stale lock for ${trimmedAddress}`);
       await RateLimiter.releaseAnalysisLock(trimmedAddress);
-      await RateLimiter.preventDuplicateAnalysis(trimmedAddress);
+      const retryLock = await RateLimiter.preventDuplicateAnalysis(trimmedAddress);
+      if (!retryLock) {
+        // Another request beat us to it
+        return res.json({
+          status: 'processing',
+          progress: 0,
+          message: 'Analysis already in progress'
+        });
+      }
     }
+
+    // At this point, we have the lock atomically acquired
 
     // Check if we should queue the request due to capacity
     const shouldQueue = await QueueManager.shouldQueue();
@@ -186,8 +217,9 @@ router.post('/analyze', validateCSRFToken, async (req, res) => {
  * - 200: Current status
  * - 400: Invalid address
  * - 404: Analysis not found
+ * - 429: Rate limit exceeded
  */
-router.get('/analyze/:address/status', async (req, res) => {
+router.get('/analyze/:address/status', statusRateLimiter, async (req, res) => {
   try {
     const { address } = req.params;
 

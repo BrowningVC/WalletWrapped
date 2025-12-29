@@ -205,8 +205,14 @@ class CacheManager {
     const dailyPNLKeys = await this.scanKeys(`daily_pnl:${walletAddress}:*`);
     keys.push(...dailyPNLKeys);
 
-    await redis.del(...keys);
-    console.log(`Invalidated cache for wallet: ${walletAddress}`);
+    // Use pipeline to batch all deletions into single round-trip
+    // This is much faster than individual delete commands (especially with 10+ keys)
+    if (keys.length > 0) {
+      const pipeline = redis.redis.pipeline();
+      keys.forEach(key => pipeline.del(key));
+      await pipeline.exec();
+      console.log(`Invalidated ${keys.length} cache keys for wallet: ${walletAddress}`);
+    }
   }
 
   /**

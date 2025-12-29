@@ -132,21 +132,25 @@ router.get('/wallet/:address/positions', async (req, res) => {
       });
     }
 
-    // Validate pagination parameters
-    const parsedLimit = parseInt(limit);
-    const parsedOffset = parseInt(offset);
+    // Validate pagination parameters with safe bounds
+    // Use Number() and check for safe integers to prevent overflow
+    const parsedLimit = Number(limit);
+    const parsedOffset = Number(offset);
 
-    if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 200) {
+    // Maximum safe offset to prevent integer overflow (1 million is reasonable for any wallet)
+    const MAX_OFFSET = 1000000;
+
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 200) {
       return res.status(400).json({
         error: 'Invalid limit parameter',
-        message: 'Limit must be between 1 and 200'
+        message: 'Limit must be an integer between 1 and 200'
       });
     }
 
-    if (isNaN(parsedOffset) || parsedOffset < 0) {
+    if (!Number.isInteger(parsedOffset) || parsedOffset < 0 || parsedOffset > MAX_OFFSET) {
       return res.status(400).json({
         error: 'Invalid offset parameter',
-        message: 'Offset must be 0 or greater'
+        message: `Offset must be an integer between 0 and ${MAX_OFFSET}`
       });
     }
 

@@ -6,6 +6,51 @@ const DatabaseQueries = require('../database/queries');
  * Manages real-time progress updates for wallet analysis
  */
 
+// Per-socket rate limiting for subscribe/unsubscribe events
+// Prevents socket flooding attacks
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_SUBSCRIBE_EVENTS = 30; // Max 30 subscribe events per minute per socket
+const MAX_UNSUBSCRIBE_EVENTS = 30;
+const socketRateLimits = new Map(); // socketId -> { subscribes: [], unsubscribes: [] }
+
+/**
+ * Check and update rate limit for a socket event
+ * @returns {boolean} true if allowed, false if rate limited
+ */
+function checkRateLimit(socketId, eventType) {
+  const now = Date.now();
+  const maxEvents = eventType === 'subscribe' ? MAX_SUBSCRIBE_EVENTS : MAX_UNSUBSCRIBE_EVENTS;
+
+  if (!socketRateLimits.has(socketId)) {
+    socketRateLimits.set(socketId, { subscribes: [], unsubscribes: [] });
+  }
+
+  const limits = socketRateLimits.get(socketId);
+  const eventList = eventType === 'subscribe' ? limits.subscribes : limits.unsubscribes;
+
+  // Remove events outside the window
+  const windowStart = now - RATE_LIMIT_WINDOW;
+  while (eventList.length > 0 && eventList[0] < windowStart) {
+    eventList.shift();
+  }
+
+  // Check if over limit
+  if (eventList.length >= maxEvents) {
+    return false;
+  }
+
+  // Record this event
+  eventList.push(now);
+  return true;
+}
+
+/**
+ * Clean up rate limit data for disconnected socket
+ */
+function cleanupSocketRateLimit(socketId) {
+  socketRateLimits.delete(socketId);
+}
+
 /**
  * Initialize Socket.io handlers
  * @param {SocketIO.Server} io - Socket.io server instance
@@ -19,6 +64,12 @@ function initializeSocketHandlers(io) {
      * Client emits: { walletAddress: string }
      */
     socket.on('subscribe', async ({ walletAddress }) => {
+      // Rate limit check
+      if (!checkRateLimit(socket.id, 'subscribe')) {
+        socket.emit('error', { message: 'Rate limit exceeded. Please slow down.' });
+        return;
+      }
+
       if (!walletAddress) {
         socket.emit('error', { message: 'Missing wallet address' });
         return;
@@ -102,6 +153,12 @@ function initializeSocketHandlers(io) {
      * Client emits: { walletAddress: string }
      */
     socket.on('unsubscribe', ({ walletAddress }) => {
+      // Rate limit check
+      if (!checkRateLimit(socket.id, 'unsubscribe')) {
+        socket.emit('error', { message: 'Rate limit exceeded. Please slow down.' });
+        return;
+      }
+
       if (!walletAddress) return;
 
       const room = `analysis:${walletAddress}`;
@@ -122,6 +179,8 @@ function initializeSocketHandlers(io) {
      */
     socket.on('disconnect', (reason) => {
       console.log(`Socket disconnected: ${socket.id} (${reason})`);
+      // Clean up rate limit data
+      cleanupSocketRateLimit(socket.id);
     });
 
     /**

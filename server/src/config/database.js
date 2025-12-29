@@ -39,12 +39,60 @@ pool.on('error', (err) => {
   // Don't exit - let the app try to recover
 });
 
-// Test connection on startup
-pool.query('SELECT NOW()', (err, res) => {
-  if (err) {
-    console.error('Database connection failed:', err);
-  } else {
-    console.log('Database connected successfully at', res.rows[0].now);
+// Track database connection status
+let isDatabaseConnected = false;
+let connectionError = null;
+
+/**
+ * Test database connection with timeout
+ * Returns true if connected, false otherwise
+ */
+async function testConnection(timeout = 10000) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+    const result = await Promise.race([
+      pool.query('SELECT NOW()'),
+      new Promise((_, reject) => {
+        controller.signal.addEventListener('abort', () => {
+          reject(new Error('Database connection timeout'));
+        });
+      })
+    ]);
+
+    clearTimeout(timeoutId);
+    isDatabaseConnected = true;
+    connectionError = null;
+    console.log('Database connected successfully at', result.rows[0].now);
+    return true;
+  } catch (err) {
+    isDatabaseConnected = false;
+    connectionError = err.message;
+    console.error('Database connection failed:', err.message);
+    return false;
+  }
+}
+
+/**
+ * Check if database is currently connected
+ */
+function isConnected() {
+  return isDatabaseConnected;
+}
+
+/**
+ * Get last connection error
+ */
+function getConnectionError() {
+  return connectionError;
+}
+
+// Test connection on startup (non-blocking)
+testConnection().then(connected => {
+  if (!connected) {
+    console.error('WARNING: Server started without database connection!');
+    console.error('Database operations will fail until connection is restored.');
   }
 });
 
@@ -166,5 +214,8 @@ module.exports = {
   query,
   transaction,
   batchInsert,
-  batchUpsert
+  batchUpsert,
+  testConnection,
+  isConnected,
+  getConnectionError
 };

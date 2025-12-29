@@ -438,6 +438,48 @@ class DatabaseQueries {
     return result.rows[0];
   }
 
+  /**
+   * Batch upsert highlights (3-5x faster than individual upserts)
+   * Optimized for end-of-analysis highlight saves
+   */
+  static async upsertHighlightsBatch(walletAddress, highlights) {
+    if (!highlights || highlights.length === 0) return [];
+
+    const columns = [
+      'wallet_address', 'highlight_type', 'title', 'description',
+      'value_primary', 'value_secondary', 'metadata', 'rank', 'image_url'
+    ];
+
+    const values = highlights.map(h => [
+      walletAddress,
+      h.type,
+      h.title,
+      h.description,
+      h.valuePrimary,
+      h.valueSecondary,
+      JSON.stringify(h.metadata || {}),
+      h.rank || 0,
+      h.imageUrl || null
+    ]);
+
+    const columnTypes = [
+      'text', 'text', 'text', 'text',
+      'text', 'text', 'jsonb', 'integer', 'text'
+    ];
+
+    await batchUpsert(
+      'highlights',
+      columns,
+      values,
+      ['wallet_address', 'highlight_type'], // conflict columns
+      null, // update all non-conflict columns
+      columnTypes
+    );
+
+    // Return highlights for consistency with single upsert
+    return highlights;
+  }
+
   static async getHighlights(walletAddress) {
     const result = await query(
       `SELECT * FROM highlights

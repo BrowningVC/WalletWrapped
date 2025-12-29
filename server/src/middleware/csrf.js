@@ -10,6 +10,8 @@ const redis = require('../config/redis');
  */
 
 const CSRF_TOKEN_EXPIRY = 3600; // 1 hour
+const CSRF_TOKEN_USE_LIMIT = 10; // Allow token to be used up to 10 times
+const CSRF_TOKEN_USE_WINDOW = 60; // Within 60 seconds
 
 /**
  * Generate a CSRF token
@@ -74,6 +76,8 @@ async function validateCSRFToken(req, res, next) {
 
     // Check if token exists in Redis
     const tokenKey = `csrf:${token}`;
+    const useCountKey = `csrf:use:${token}`;
+
     const exists = await redis.get(tokenKey);
 
     if (!exists) {
@@ -83,8 +87,24 @@ async function validateCSRFToken(req, res, next) {
       });
     }
 
-    // Token is valid - delete it (single-use tokens)
-    await redis.del(tokenKey);
+    // Check and increment use count (allows multiple requests within window)
+    // This prevents race conditions when client makes concurrent requests
+    const useCount = await redis.redis.incr(useCountKey);
+
+    // Set expiry on use count key if this is the first use
+    if (useCount === 1) {
+      await redis.redis.expire(useCountKey, CSRF_TOKEN_USE_WINDOW);
+    }
+
+    // If exceeded use limit, reject and invalidate token
+    if (useCount > CSRF_TOKEN_USE_LIMIT) {
+      await redis.del(tokenKey);
+      await redis.del(useCountKey);
+      return res.status(403).json({
+        error: 'CSRF token exhausted',
+        message: 'Token has been used too many times. Please refresh and try again.'
+      });
+    }
 
     next();
   } catch (error) {

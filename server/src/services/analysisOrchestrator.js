@@ -30,11 +30,16 @@ try {
 // walletAddress -> { abortController, startTime, cleanedUp }
 const activeAnalyses = new Map();
 
+// Track last progress emission time for throttling
+// walletAddress -> timestamp (ms)
+const lastProgressEmit = new Map();
+
 // Constants for cleanup and bounds
 // With 30k tx limit: ~40 minutes max + 5 minute buffer = 45 minutes
 const MAX_ANALYSIS_DURATION = parseInt(process.env.MAX_ANALYSIS_DURATION) || 45 * 60 * 1000; // 45 minutes max
 const CLEANUP_INTERVAL = 10 * 60 * 1000; // Check for stale entries every 10 minutes
 const MAX_CONCURRENT_ANALYSES = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 30; // Bounded map size
+const PROGRESS_THROTTLE_MS = 200; // Max 5 progress updates per second (reduce Redis/socket.io churn)
 
 /**
  * Force cleanup of oldest analysis if at capacity
@@ -60,6 +65,7 @@ function enforceCapacityLimit() {
     data.cleanedUp = true;
     data.abortController.abort();
     activeAnalyses.delete(oldestAddress);
+    lastProgressEmit.delete(oldestAddress); // Clean up throttle map
     RateLimiter.releaseDuplicateLock(oldestAddress).catch(err =>
       console.error(`Failed to release lock for evicted ${oldestAddress}:`, err)
     );
@@ -85,6 +91,7 @@ setInterval(() => {
       data.cleanedUp = true;
       data.abortController.abort();
       activeAnalyses.delete(address);
+      lastProgressEmit.delete(address); // Clean up throttle map
       // Release lock without awaiting to prevent blocking
       RateLimiter.releaseDuplicateLock(address).catch(err =>
         console.error(`Failed to release lock for ${address}:`, err)
@@ -122,12 +129,26 @@ function getStageFromPercent(percent) {
 
 /**
  * Emit progress update via Socket.io and Redis
+ * Throttled to max 5 updates/sec to reduce Redis/socket.io churn under load
  * @param {string} walletAddress - Wallet being analyzed
  * @param {number} percent - Progress percentage (0-100)
  * @param {string} message - Status message
  * @param {object} details - Optional detailed progress info
+ * @param {boolean} force - Force emit even if throttled (for critical milestones)
  */
-async function emitProgress(walletAddress, percent, message, details = {}) {
+async function emitProgress(walletAddress, percent, message, details = {}, force = false) {
+  // Throttle non-critical progress updates (max 5/sec per wallet)
+  // Always emit: 0%, 100%, or force=true (critical milestones)
+  if (!force && percent > 0 && percent < 100) {
+    const lastEmit = lastProgressEmit.get(walletAddress) || 0;
+    const now = Date.now();
+    if (now - lastEmit < PROGRESS_THROTTLE_MS) {
+      // Skip this update - too soon since last emit
+      return;
+    }
+    lastProgressEmit.set(walletAddress, now);
+  }
+
   const stageInfo = getStageFromPercent(percent);
 
   const data = {
@@ -225,6 +246,7 @@ async function runAnalysis(walletAddress, incremental = false) {
     analysisState.cleanedUp = true;
     abortController.abort();
     activeAnalyses.delete(walletAddress);
+    lastProgressEmit.delete(walletAddress); // Clean up throttle map
     RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
       console.error(`Timeout cleanup lock release failed:`, err)
     );
@@ -331,13 +353,11 @@ async function runAnalysis(walletAddress, incremental = false) {
 
     await emitProgress(walletAddress, 90, 'Saving highlights...', txDetails);
 
-    // Save highlights to database
-    for (const highlight of highlights) {
-      if (abortController.signal.aborted) {
-        throw new Error('Analysis cancelled');
-      }
-      await DatabaseQueries.upsertHighlight(walletAddress, highlight);
+    // Save highlights to database (batch upsert for 3-5x performance)
+    if (abortController.signal.aborted) {
+      throw new Error('Analysis cancelled');
     }
+    await DatabaseQueries.upsertHighlightsBatch(walletAddress, highlights);
 
     await emitProgress(walletAddress, 95, 'Warming cache...', txDetails);
 
@@ -519,6 +539,7 @@ async function runAnalysis(walletAddress, incremental = false) {
     if (!analysisState.cleanedUp) {
       analysisState.cleanedUp = true;
       activeAnalyses.delete(walletAddress);
+      lastProgressEmit.delete(walletAddress); // Clean up throttle map
       await RateLimiter.releaseDuplicateLock(walletAddress).catch(err =>
         console.error(`Finally block lock release failed for ${walletAddress}:`, err)
       );

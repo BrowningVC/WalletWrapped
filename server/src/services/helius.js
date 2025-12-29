@@ -101,16 +101,21 @@ const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
  * Make a Helius API POST request (for enhanced transactions)
  * Wrapped with semaphore to prevent rate limiting across concurrent users
  * Includes automatic retry with exponential backoff
- * Added: 60-second timeout per request to prevent indefinite hangs
+ * Adaptive timeout: scales with batch size to prevent premature timeouts under load
  */
 async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
     const url = `${HELIUS_API_URL}${endpoint}`;
 
+    // Adaptive timeout based on batch size (20s base + 200ms per transaction)
+    // For 100 tx batch: 40s, for 1000 tx: 220s (capped at 180s = 3min)
+    const batchSize = Array.isArray(body.transactions) ? body.transactions.length : 1;
+    const adaptiveTimeout = Math.min(180000, 20000 + (batchSize * 200)); // 20s-180s range
+
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      // Create abort controller for timeout (60s for POST since it handles more data)
+      // Create abort controller for timeout with adaptive duration
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      const timeoutId = setTimeout(() => controller.abort(), adaptiveTimeout);
 
       try {
         const response = await fetch(url, {
@@ -142,8 +147,8 @@ async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
 
         // Handle timeout specifically
         if (error.name === 'AbortError') {
-          console.log(`POST request timed out after 60s, retry ${attempt + 1}/${maxRetries}...`);
-          if (attempt >= maxRetries) throw new Error('POST request timed out after max retries');
+          console.log(`POST request timed out after ${adaptiveTimeout / 1000}s (batch size: ${batchSize}), retry ${attempt + 1}/${maxRetries}...`);
+          if (attempt >= maxRetries) throw new Error(`POST request timed out after max retries (${adaptiveTimeout / 1000}s timeout)`);
           continue;
         }
 
