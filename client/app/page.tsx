@@ -64,7 +64,7 @@ export default function HomePage() {
             <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold mb-6 animate-slide-up text-balance">
               <span className="text-white">Your Year In The</span>
               <br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-b from-amber-600 via-amber-800 to-amber-950">Trenches</span>
+              <span className="festive-gradient-text">Trenches</span>
               {' '}
               <span className="festive-gradient-text">Wrapped</span>
             </h1>
