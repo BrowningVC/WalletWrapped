@@ -817,6 +817,41 @@ async function generateSummaryCard(highlights, walletAddress) {
   return pngData.asPng();
 }
 
+/**
+ * Ensure satori and fonts are loaded before card generation
+ * Call this once before generating multiple cards in parallel
+ * @returns {Promise<{ready: boolean, error?: string}>}
+ */
+async function ensureReady() {
+  try {
+    const [satoriResult, fontsResult] = await Promise.all([
+      loadSatori(),
+      loadFonts()
+    ]);
+
+    const satoriOk = !!satori;
+    const fontsOk = !!fontsResult;
+
+    if (!satoriOk || !fontsOk) {
+      const missing = [];
+      if (!satoriOk) missing.push('satori');
+      if (!fontsOk) missing.push('fonts');
+      return { ready: false, error: `Missing: ${missing.join(', ')}` };
+    }
+
+    return { ready: true };
+  } catch (err) {
+    return { ready: false, error: err.message };
+  }
+}
+
+/**
+ * Check if card generator is ready (non-blocking)
+ */
+function isReady() {
+  return !!(satori && interRegular && interBold);
+}
+
 // Pre-load satori and fonts on module load with detailed logging
 Promise.all([
   loadSatori(),
@@ -836,4 +871,6 @@ module.exports = {
   generateSummaryCard,
   loadFonts,
   loadSatori,
+  ensureReady,
+  isReady,
 };

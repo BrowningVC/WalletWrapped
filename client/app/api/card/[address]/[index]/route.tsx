@@ -449,121 +449,130 @@ export async function GET(
               </div>
             </div>
 
-            {/* Prominent Ticker/Date Display */}
-            {showProminentTicker && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: `${s(10)}px`,
-                  marginBottom: `${s(16)}px`,
-                  padding: `${s(12)}px ${s(16)}px`,
-                  background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
-                  borderRadius: `${s(12)}px`,
-                  border: `${s(1)}px solid ${colors.text}30`,
-                }}
-              >
-                {/* Calendar icon */}
-                <svg
-                  width={s(40)}
-                  height={s(40)}
-                  viewBox="0 0 64 64"
-                  style={{ display: 'flex' }}
-                >
-                  {/* Calendar base */}
-                  <rect x="10" y="14" width="44" height="40" rx="4" fill="#1a1a2e" stroke="url(#borderGradToken)" strokeWidth="2" />
-                  {/* Calendar header */}
-                  <rect x="10" y="14" width="44" height="10" rx="4" fill="#2a2a42" />
-                  <rect x="10" y="20" width="44" height="4" fill="#2a2a42" />
-                  {/* Calendar rings */}
-                  <rect x="18" y="10" width="3" height="8" rx="1.5" fill="#ffd700" />
-                  <rect x="31" y="10" width="3" height="8" rx="1.5" fill="#ff6b9d" />
-                  <rect x="44" y="10" width="3" height="8" rx="1.5" fill="#9d4edd" />
-                  {/* Activity dots */}
-                  <circle cx="17" cy="31" r="2" fill="#10b981" />
-                  <circle cx="23" cy="31" r="2" fill="#ffd700" />
-                  <circle cx="35" cy="37" r="2" fill="#ff6b9d" />
-                  <circle cx="41" cy="37" r="2" fill="#10b981" />
-                  <circle cx="29" cy="43" r="2" fill="#9d4edd" />
-                  <circle cx="47" cy="43" r="2" fill="#ffd700" />
-                  {/* Trend line */}
-                  <path d="M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32" stroke="#10b981" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.7" />
-                  <defs>
-                    <linearGradient id="borderGradToken" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#ffd700" />
-                      <stop offset="50%" stopColor="#ff6b9d" />
-                      <stop offset="100%" stopColor="#9d4edd" />
-                    </linearGradient>
-                  </defs>
-                </svg>
-                <div
-                  style={{
-                    display: 'flex',
-                    fontSize: `${s(28)}px`,
-                    fontWeight: '800',
-                    color: colors.text,
-                    letterSpacing: '-0.02em',
-                    textShadow: `0 0 ${s(30)}px ${colors.text}40`,
-                  }}
-                >
-                  ${tokenSymbol}
-                </div>
-              </div>
-            )}
-            {showProminentDate && subtitle && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: `${s(10)}px`,
-                  marginBottom: `${s(16)}px`,
-                  padding: `${s(12)}px ${s(16)}px`,
-                  background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
-                  borderRadius: `${s(12)}px`,
-                  border: `${s(1)}px solid ${colors.text}30`,
-                }}
-              >
-                {/* Calendar icon matching main logo style */}
-                <svg width={s(40)} height={s(40)} viewBox="0 0 64 64" fill="none" style={{ display: 'flex', flexShrink: 0 }}>
-                  {/* Calendar base */}
-                  <rect x="10" y="14" width="44" height="40" rx="4" fill="#1a1a2e" stroke={colors.text} strokeWidth="2" />
-                  {/* Calendar header bar */}
-                  <rect x="10" y="14" width="44" height="10" rx="4" fill={colors.text} />
-                  <rect x="10" y="20" width="44" height="4" fill={colors.text} />
-                  {/* Calendar rings/binding */}
-                  <rect x="18" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
-                  <rect x="31" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
-                  <rect x="44" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
-                  {/* Highlighted day indicator */}
-                  <circle cx="32" cy="37" r="8" fill={colors.text} opacity="0.3" />
-                  <circle cx="32" cy="37" r="5" fill={colors.text} />
-                </svg>
-                <div
-                  style={{
-                    display: 'flex',
-                    fontSize: `${s(24)}px`,
-                    fontWeight: '800',
-                    color: colors.text,
-                    letterSpacing: '-0.02em',
-                    textShadow: `0 0 ${s(30)}px ${colors.text}40`,
-                  }}
-                >
-                  {subtitle}
-                </div>
-              </div>
-            )}
-
-            {/* Main value section */}
+            {/* Middle content area - FIXED HEIGHT for consistent alignment across all cards */}
             <div
               style={{
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'flex-start',
-                flex: 1,
+                height: `${s(220)}px`, // Fixed height ensures all cards align consistently
                 position: 'relative',
               }}
             >
+              {/* Prominent Ticker/Date Display - only shown for certain card types */}
+              {showProminentTicker && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
+                    background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
+                  }}
+                >
+                  {/* Calendar icon */}
+                  <svg
+                    width={s(40)}
+                    height={s(40)}
+                    viewBox="0 0 64 64"
+                    style={{ display: 'flex' }}
+                  >
+                    {/* Calendar base */}
+                    <rect x="10" y="14" width="44" height="40" rx="4" fill="#1a1a2e" stroke="url(#borderGradToken)" strokeWidth="2" />
+                    {/* Calendar header */}
+                    <rect x="10" y="14" width="44" height="10" rx="4" fill="#2a2a42" />
+                    <rect x="10" y="20" width="44" height="4" fill="#2a2a42" />
+                    {/* Calendar rings */}
+                    <rect x="18" y="10" width="3" height="8" rx="1.5" fill="#ffd700" />
+                    <rect x="31" y="10" width="3" height="8" rx="1.5" fill="#ff6b9d" />
+                    <rect x="44" y="10" width="3" height="8" rx="1.5" fill="#9d4edd" />
+                    {/* Activity dots */}
+                    <circle cx="17" cy="31" r="2" fill="#10b981" />
+                    <circle cx="23" cy="31" r="2" fill="#ffd700" />
+                    <circle cx="35" cy="37" r="2" fill="#ff6b9d" />
+                    <circle cx="41" cy="37" r="2" fill="#10b981" />
+                    <circle cx="29" cy="43" r="2" fill="#9d4edd" />
+                    <circle cx="47" cy="43" r="2" fill="#ffd700" />
+                    {/* Trend line */}
+                    <path d="M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32" stroke="#10b981" strokeWidth="2" strokeLinecap="round" fill="none" opacity="0.7" />
+                    <defs>
+                      <linearGradient id="borderGradToken" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#ffd700" />
+                        <stop offset="50%" stopColor="#ff6b9d" />
+                        <stop offset="100%" stopColor="#9d4edd" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div
+                    style={{
+                      display: 'flex',
+                      fontSize: `${s(28)}px`,
+                      fontWeight: '800',
+                      color: colors.text,
+                      letterSpacing: '-0.02em',
+                      textShadow: `0 0 ${s(30)}px ${colors.text}40`,
+                    }}
+                  >
+                    ${tokenSymbol}
+                  </div>
+                </div>
+              )}
+              {showProminentDate && subtitle && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
+                    background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
+                  }}
+                >
+                  {/* Calendar icon matching main logo style */}
+                  <svg width={s(40)} height={s(40)} viewBox="0 0 64 64" fill="none" style={{ display: 'flex', flexShrink: 0 }}>
+                    {/* Calendar base */}
+                    <rect x="10" y="14" width="44" height="40" rx="4" fill="#1a1a2e" stroke={colors.text} strokeWidth="2" />
+                    {/* Calendar header bar */}
+                    <rect x="10" y="14" width="44" height="10" rx="4" fill={colors.text} />
+                    <rect x="10" y="20" width="44" height="4" fill={colors.text} />
+                    {/* Calendar rings/binding */}
+                    <rect x="18" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
+                    <rect x="31" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
+                    <rect x="44" y="10" width="3" height="8" rx="1.5" fill={colors.text} />
+                    {/* Highlighted day indicator */}
+                    <circle cx="32" cy="37" r="8" fill={colors.text} opacity="0.3" />
+                    <circle cx="32" cy="37" r="5" fill={colors.text} />
+                  </svg>
+                  <div
+                    style={{
+                      display: 'flex',
+                      fontSize: `${s(24)}px`,
+                      fontWeight: '800',
+                      color: colors.text,
+                      letterSpacing: '-0.02em',
+                      textShadow: `0 0 ${s(30)}px ${colors.text}40`,
+                    }}
+                  >
+                    {subtitle}
+                  </div>
+                </div>
+              )}
+
+              {/* Main value section - centered in remaining space */}
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'center',
+                  alignItems: 'flex-start',
+                  flex: 1,
+                  position: 'relative',
+                }}
+              >
               {/* Accent bar beside value */}
               <div
                 style={{
@@ -613,6 +622,7 @@ export async function GET(
               >
                 {subtitle}
               </div>
+            </div>
             </div>
 
             {/* Bottom section */}

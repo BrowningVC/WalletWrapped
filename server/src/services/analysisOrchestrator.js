@@ -332,53 +332,71 @@ async function runAnalysis(walletAddress, incremental = false) {
       const cardStartTime = Date.now();
       console.log(`[Card Gen] Starting server-side card generation for ${walletAddress}`);
 
-      // Fetch highlights from database for card generation
-      const dbHighlights = await DatabaseQueries.getHighlights(walletAddress);
-      console.log(`[Card Gen] Found ${dbHighlights?.length || 0} highlights in database`);
+      // Pre-load satori and fonts ONCE before parallel generation
+      const readyCheck = await CardGenerator.ensureReady();
+      if (!readyCheck.ready) {
+        throw new Error(`CardGenerator not ready: ${readyCheck.error}`);
+      }
+      console.log(`[Card Gen] Satori and fonts ready (${Date.now() - cardStartTime}ms)`);
 
-      if (!dbHighlights || dbHighlights.length === 0) {
-        console.error(`[Card Gen] No highlights found for ${walletAddress} - skipping card generation`);
+      // Use in-memory highlights instead of fetching from database again
+      // The highlights array is already available from the generation step above
+      if (!highlights || highlights.length === 0) {
+        console.error(`[Card Gen] No highlights available for ${walletAddress} - skipping card generation`);
         throw new Error('No highlights available for card generation');
       }
 
       // Reorder highlights to match client UI (overall_pnl last)
       const reorderedHighlights = [
-        ...dbHighlights.filter(h => h.highlight_type !== 'overall_pnl'),
-        ...dbHighlights.filter(h => h.highlight_type === 'overall_pnl'),
+        ...highlights.filter(h => h.type !== 'overall_pnl'),
+        ...highlights.filter(h => h.type === 'overall_pnl'),
       ];
-      console.log(`[Card Gen] Reordered to ${reorderedHighlights.length} highlights`);
+      console.log(`[Card Gen] Using ${reorderedHighlights.length} in-memory highlights`);
+
+      // Helper: generate a single card with retry and timeout
+      const CARD_TIMEOUT = 10000; // 10 seconds max per card
+      const MAX_RETRIES = 2;
+
+      const generateCardWithRetry = async (highlight, index, isSummary = false) => {
+        for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+          const cardGenStart = Date.now();
+          try {
+            // Wrap in timeout promise
+            const timeoutPromise = new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Card generation timeout')), CARD_TIMEOUT)
+            );
+
+            const genPromise = isSummary
+              ? CardGenerator.generateSummaryCard(highlight, walletAddress)
+              : CardGenerator.generateCard(highlight, walletAddress);
+
+            const buffer = await Promise.race([genPromise, timeoutPromise]);
+            await CacheManager.cacheCardImage(walletAddress, index, buffer);
+            const duration = Date.now() - cardGenStart;
+            console.log(`[Card Gen] Card ${index} generated (${buffer.length} bytes, ${duration}ms)`);
+            return { cardIndex: index, success: true, duration };
+          } catch (err) {
+            const duration = Date.now() - cardGenStart;
+            if (attempt < MAX_RETRIES) {
+              console.warn(`[Card Gen] Card ${index} attempt ${attempt} failed (${duration}ms): ${err.message} - retrying...`);
+              await new Promise(r => setTimeout(r, 100)); // Brief pause before retry
+            } else {
+              console.error(`[Card Gen] Card ${index} failed after ${MAX_RETRIES} attempts:`, err.message);
+              return { cardIndex: index, success: false, error: err.message };
+            }
+          }
+        }
+      };
 
       // Generate individual cards (0-5) in parallel
-      const cardPromises = reorderedHighlights.slice(0, 6).map(async (highlight, index) => {
-        const cardGenStart = Date.now();
-        try {
-          const buffer = await CardGenerator.generateCard(highlight, walletAddress);
-          await CacheManager.cacheCardImage(walletAddress, index, buffer);
-          const duration = Date.now() - cardGenStart;
-          console.log(`[Card Gen] Card ${index} generated (${buffer.length} bytes, ${duration}ms)`);
-          return { cardIndex: index, success: true, duration };
-        } catch (err) {
-          console.error(`[Card Gen] Card ${index} failed:`, err.message, err.stack);
-          return { cardIndex: index, success: false, error: err.message };
-        }
-      });
+      const cardPromises = reorderedHighlights.slice(0, 6).map((highlight, index) =>
+        generateCardWithRetry(highlight, index)
+      );
 
       // Generate summary card
-      cardPromises.push((async () => {
-        const summaryStart = Date.now();
-        try {
-          const buffer = await CardGenerator.generateSummaryCard(reorderedHighlights.slice(0, 6), walletAddress);
-          await CacheManager.cacheCardImage(walletAddress, 'summary', buffer);
-          const duration = Date.now() - summaryStart;
-          console.log(`[Card Gen] Summary card generated (${buffer.length} bytes, ${duration}ms)`);
-          return { cardIndex: 'summary', success: true, duration };
-        } catch (err) {
-          console.error(`[Card Gen] Summary card failed:`, err.message, err.stack);
-          return { cardIndex: 'summary', success: false, error: err.message };
-        }
-      })());
+      cardPromises.push(generateCardWithRetry(reorderedHighlights.slice(0, 6), 'summary', true));
 
-      console.log(`[Card Gen] Starting generation of ${cardPromises.length} cards...`);
+      console.log(`[Card Gen] Starting parallel generation of ${cardPromises.length} cards...`);
       const cardResults = await Promise.all(cardPromises);
       const successCount = cardResults.filter(r => r.success).length;
       const failedCards = cardResults.filter(r => !r.success);
