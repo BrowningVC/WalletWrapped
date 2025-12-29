@@ -140,16 +140,40 @@ export default function AnalyzePage() {
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
   const [progressMessageIndex, setProgressMessageIndex] = useState(0);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [pageReady, setPageReady] = useState(false);
   const pendingRedirectRef = useRef<string | null>(null);
+  const pageLoadTimeRef = useRef<number>(Date.now());
 
   // Minimum time to show progress UI before redirecting (allows user to see animation)
-  const MIN_DISPLAY_TIME = 2000; // 2 seconds minimum
+  const MIN_DISPLAY_TIME = 2500; // 2.5 seconds minimum to see the UI
+
+  // Mark page as ready after first paint - ensures UI is visible before any redirect
+  // This is critical: we must show the analyze page UI before any redirect
+  useEffect(() => {
+    // Use multiple frames to ensure the page is fully painted and visible to user
+    let frameCount = 0;
+    const waitForPaint = () => {
+      frameCount++;
+      if (frameCount < 3) {
+        // Wait for 3 animation frames to ensure paint is complete
+        requestAnimationFrame(waitForPaint);
+      } else {
+        // Then add a minimum visible time
+        setTimeout(() => {
+          setPageReady(true);
+          console.log('Page ready for interaction after', frameCount, 'frames');
+        }, 500); // 500ms minimum visibility before redirect can start
+      }
+    };
+    requestAnimationFrame(waitForPaint);
+  }, []);
 
   // Handle delayed redirect - ensures user sees progress animation
   useEffect(() => {
-    if (!analysisComplete || !pendingRedirectRef.current) return;
+    // Don't redirect until page is fully rendered and visible
+    if (!analysisComplete || !pendingRedirectRef.current || !pageReady) return;
 
-    const timeElapsed = startTime ? Date.now() - startTime : 0;
+    const timeElapsed = Date.now() - pageLoadTimeRef.current;
     const remainingTime = Math.max(0, MIN_DISPLAY_TIME - timeElapsed);
 
     console.log(`Analysis complete, redirecting in ${remainingTime}ms (elapsed: ${timeElapsed}ms)`);
@@ -161,7 +185,7 @@ export default function AnalyzePage() {
     }, remainingTime);
 
     return () => clearTimeout(timer);
-  }, [analysisComplete, startTime, router]);
+  }, [analysisComplete, pageReady, router]);
 
   useEffect(() => {
     if (!startTime) return;
@@ -219,12 +243,15 @@ export default function AnalyzePage() {
       if (isCancelled || progressRef.current === 100) return;
 
       try {
+        console.log('📊 Polling status... current progress:', progressRef.current);
         const response = await fetch(`${apiUrl}/api/analyze/${address}/status`);
         if (!response.ok || isCancelled) return;
 
         const data = await response.json();
+        console.log('📊 Poll response:', data.status, data.progress + '%');
 
         if (data.status === 'completed') {
+          console.log('📊 Poll: Analysis completed!');
           setProgress(100);
           setCurrentStage('completing');
           setCurrentStep(6);
@@ -242,11 +269,13 @@ export default function AnalyzePage() {
         // Update progress from polling if WebSocket isn't delivering
         // Use ref to get current value, avoiding stale closure
         if (data.progress > progressRef.current) {
+          console.log('📊 Poll: Updating progress from', progressRef.current, 'to', data.progress);
           setProgress(data.progress);
           setStatusMessage(data.message || 'Processing...');
           setLastUpdateTime(Date.now());
         }
       } catch (err) {
+        console.log('📊 Poll error:', err);
         // Silently ignore polling errors - WebSocket is primary
       }
     };
@@ -291,7 +320,8 @@ export default function AnalyzePage() {
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected, id:', newSocket.id);
+      console.log('✅ Socket connected, id:', newSocket.id);
+      console.log('📤 Subscribing to wallet:', address);
       newSocket.emit('subscribe', { walletAddress: address });
 
       // Wait a brief moment for subscription to be processed, then start analysis
@@ -299,7 +329,7 @@ export default function AnalyzePage() {
       setTimeout(() => {
         if (!analysisStarted) {
           analysisStarted = true;
-          console.log('Socket ready - starting analysis');
+          console.log('🚀 Socket ready - starting analysis');
           startAnalysis();
         }
       }, 150); // Slightly longer to ensure subscription is processed
@@ -334,13 +364,25 @@ export default function AnalyzePage() {
     }, 2000);
 
     newSocket.on('progress', (data: ProgressData) => {
-      console.log('Progress update:', data);
-      setProgress(data.percent);
+      console.log('🔄 PROGRESS UPDATE RECEIVED:', data.percent, '%', data.message);
+      console.log('   Full data:', JSON.stringify(data));
+
+      // Force state updates
+      setProgress(prevProgress => {
+        console.log('   Setting progress from', prevProgress, 'to', data.percent);
+        return data.percent;
+      });
       setStatusMessage(data.message);
       setLastUpdateTime(Date.now()); // Reset activity timer on each progress update
 
-      if (data.stage) setCurrentStage(data.stage);
-      if (data.currentStep !== undefined && data.currentStep !== null) setCurrentStep(data.currentStep);
+      if (data.stage) {
+        console.log('   Setting stage:', data.stage);
+        setCurrentStage(data.stage);
+      }
+      if (data.currentStep !== undefined && data.currentStep !== null) {
+        console.log('   Setting step:', data.currentStep);
+        setCurrentStep(data.currentStep);
+      }
       if (data.transactionsFetched !== undefined) setTransactionsFetched(data.transactionsFetched);
       if (data.transactionsTotal !== undefined) setTransactionsTotal(data.transactionsTotal);
       if (data.startTime && !startTime) setStartTime(data.startTime);
@@ -388,10 +430,10 @@ export default function AnalyzePage() {
   }, [address, router]);
 
   const startAnalysis = async () => {
-    console.log('=== startAnalysis() called ===');
+    console.log('🏁 === startAnalysis() called ===');
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
-      console.log('API URL:', apiUrl);
+      console.log('🌐 API URL:', apiUrl);
 
       // First, fetch CSRF token
       console.log('Fetching CSRF token...');
