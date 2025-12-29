@@ -198,6 +198,8 @@ export default function AnalyzePage() {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
+  const [isStalled, setIsStalled] = useState(false);
+  const [stallCount, setStallCount] = useState(0);
   const [progressMessageIndex, setProgressMessageIndex] = useState(0);
   const [funFactIndex, setFunFactIndex] = useState(() => Math.floor(Math.random() * funFacts.length));
   const [analysisComplete, setAnalysisComplete] = useState(false);
@@ -293,6 +295,21 @@ export default function AnalyzePage() {
 
     return () => clearInterval(interval);
   }, [startTime, lastUpdateTime]);
+
+  // Detect stalled analysis - if no progress update for 45+ seconds, show warning
+  // For large wallets (>5000 txns), allow 90 seconds before showing stall warning
+  useEffect(() => {
+    const stallThreshold = (transactionsTotal && transactionsTotal > 5000) ? 90 : 45;
+
+    if (secondsSinceUpdate >= stallThreshold && displayProgress > 0 && displayProgress < 90 && !isStalled) {
+      console.warn(`Analysis appears stalled - no update for ${secondsSinceUpdate}s`);
+      setIsStalled(true);
+      setStallCount(prev => prev + 1);
+    } else if (secondsSinceUpdate < 10 && isStalled) {
+      // Progress resumed, clear stall state
+      setIsStalled(false);
+    }
+  }, [secondsSinceUpdate, displayProgress, isStalled, transactionsTotal]);
 
   // Rotate progress messages every 4 seconds when analysis is taking a while
   useEffect(() => {

@@ -83,6 +83,7 @@ const COLORS = {
 
 /**
  * Generate a card image for a specific highlight
+ * Matches the client-side design exactly for 1:1 parity
  * @param {Object} highlight - Highlight data from database
  * @param {string} walletAddress - Wallet address for display
  * @returns {Promise<Buffer>} PNG image buffer
@@ -105,9 +106,10 @@ async function generateCard(highlight, walletAddress) {
   const subtitle = highlight.metadata?.formattedSecondary || highlight.value_secondary || '';
   const title = highlight.title || '';
   const context = highlight.description || '';
+  const highlightType = highlight.highlight_type;
   const tokenSymbol = highlight.metadata?.tokenSymbol;
 
-  // Calculate font size based on value length
+  // Calculate font size based on value length (matching client exactly)
   const getValueFontSize = (len) => {
     if (len > 16) return 32;
     if (len > 14) return 38;
@@ -120,21 +122,26 @@ async function generateCard(highlight, walletAddress) {
   };
   const valueFontSize = getValueFontSize(value.length);
 
-  // Determine value color
+  // Determine value color (matching client exactly)
   const isPositive = typeof value === 'string' && (value.startsWith('+') || (!value.startsWith('-') && value.includes('$')));
   const isNegative = typeof value === 'string' && value.startsWith('-');
   const valueColor = isPositive ? '#22c55e' : isNegative ? '#ef4444' : colors.text;
 
-  // Show ticker for certain highlight types
-  const showTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlight.highlight_type) && tokenSymbol;
+  // Show ticker/date for certain highlight types (matching client)
+  const showProminentTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlightType) && tokenSymbol;
+  const showProminentDate = (highlightType === 'best_day' || highlightType === 'best_profit_day') && subtitle;
 
-  // Build JSX-like structure for Satori
+  // Scale factor for 2x resolution (matching client's HD output)
+  const scale = 2;
+  const s = (v) => v * scale;
+
+  // Build JSX-like structure for Satori (matching client exactly)
   const jsx = {
     type: 'div',
     props: {
       style: {
-        width: '800px',
-        height: '1040px',
+        width: `${s(400)}px`,
+        height: `${s(520)}px`,
         display: 'flex',
         flexDirection: 'column',
         background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #0a0a1a 100%)',
@@ -143,7 +150,61 @@ async function generateCard(highlight, walletAddress) {
         overflow: 'hidden',
       },
       children: [
-        // Main content container
+        // Vibrant gradient orb (top-right)
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute',
+              top: `${s(-100)}px`,
+              right: `${s(-100)}px`,
+              width: `${s(300)}px`,
+              height: `${s(300)}px`,
+              background: `radial-gradient(circle, ${colors.text}25 0%, ${colors.text}10 40%, transparent 70%)`,
+              borderRadius: '50%',
+              display: 'flex',
+            },
+          },
+        },
+        // Vibrant gradient orb (bottom-left)
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute',
+              bottom: `${s(-120)}px`,
+              left: `${s(-120)}px`,
+              width: `${s(350)}px`,
+              height: `${s(350)}px`,
+              background: 'radial-gradient(circle, #a855f720 0%, #a855f710 40%, transparent 70%)',
+              borderRadius: '50%',
+              display: 'flex',
+            },
+          },
+        },
+        // Sparkle particles
+        { type: 'div', props: { style: { position: 'absolute', top: `${s(80)}px`, right: `${s(60)}px`, width: `${s(8)}px`, height: `${s(8)}px`, background: '#ffd700', borderRadius: '50%', opacity: 0.6, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', top: `${s(140)}px`, right: `${s(120)}px`, width: `${s(6)}px`, height: `${s(6)}px`, background: '#ff6b9d', borderRadius: '50%', opacity: 0.5, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', top: `${s(200)}px`, left: `${s(40)}px`, width: `${s(7)}px`, height: `${s(7)}px`, background: colors.text, borderRadius: '50%', opacity: 0.4, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', bottom: `${s(180)}px`, left: `${s(80)}px`, width: `${s(5)}px`, height: `${s(5)}px`, background: '#00f5d4', borderRadius: '50%', opacity: 0.5, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', bottom: `${s(120)}px`, right: `${s(90)}px`, width: `${s(6)}px`, height: `${s(6)}px`, background: '#9d4edd', borderRadius: '50%', opacity: 0.6, display: 'flex' } } },
+        // Grid pattern
+        {
+          type: 'div',
+          props: {
+            style: {
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundImage: `linear-gradient(${colors.text}08 ${s(1)}px, transparent ${s(1)}px), linear-gradient(90deg, ${colors.text}08 ${s(1)}px, transparent ${s(1)}px)`,
+              backgroundSize: `${s(40)}px ${s(40)}px`,
+              display: 'flex',
+            },
+          },
+        },
+        // Main content container with border
         {
           type: 'div',
           props: {
@@ -151,13 +212,47 @@ async function generateCard(highlight, walletAddress) {
               position: 'relative',
               width: '100%',
               height: '100%',
-              border: `4px solid ${colors.border}`,
-              borderRadius: '32px',
-              padding: '56px',
+              border: `${s(2)}px solid ${colors.border}`,
+              borderRadius: `${s(16)}px`,
+              padding: `${s(28)}px`,
               display: 'flex',
               flexDirection: 'column',
             },
             children: [
+              // Top-right corner accent
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    position: 'absolute',
+                    top: `${s(12)}px`,
+                    right: `${s(12)}px`,
+                    width: `${s(50)}px`,
+                    height: `${s(50)}px`,
+                    borderTop: `${s(3)}px solid ${colors.text}60`,
+                    borderRight: `${s(3)}px solid ${colors.text}60`,
+                    borderRadius: `0 ${s(14)}px 0 0`,
+                    display: 'flex',
+                  },
+                },
+              },
+              // Bottom-left corner accent
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    position: 'absolute',
+                    bottom: `${s(12)}px`,
+                    left: `${s(12)}px`,
+                    width: `${s(50)}px`,
+                    height: `${s(50)}px`,
+                    borderBottom: `${s(3)}px solid ${colors.text}50`,
+                    borderLeft: `${s(3)}px solid ${colors.text}50`,
+                    borderRadius: `0 0 0 ${s(14)}px`,
+                    display: 'flex',
+                  },
+                },
+              },
               // Header
               {
                 type: 'div',
@@ -166,7 +261,7 @@ async function generateCard(highlight, walletAddress) {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'flex-start',
-                    marginBottom: '48px',
+                    marginBottom: `${s(24)}px`,
                   },
                   children: [
                     // Title section
@@ -179,12 +274,14 @@ async function generateCard(highlight, walletAddress) {
                             type: 'div',
                             props: {
                               style: {
-                                fontSize: '22px',
+                                display: 'flex',
+                                fontSize: `${s(11)}px`,
                                 color: colors.text,
                                 textTransform: 'uppercase',
                                 letterSpacing: '0.1em',
-                                marginBottom: '12px',
+                                marginBottom: `${s(6)}px`,
                                 fontWeight: '600',
+                                opacity: 0.8,
                               },
                               children: '2025 WRAPPED',
                             },
@@ -193,12 +290,25 @@ async function generateCard(highlight, walletAddress) {
                             type: 'div',
                             props: {
                               style: {
-                                fontSize: '56px',
-                                fontWeight: '700',
-                                color: '#ffffff',
-                                letterSpacing: '-0.03em',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: `${s(8)}px`,
                               },
-                              children: title,
+                              children: [
+                                {
+                                  type: 'div',
+                                  props: {
+                                    style: {
+                                      display: 'flex',
+                                      fontSize: `${s(28)}px`,
+                                      fontWeight: '700',
+                                      color: '#ffffff',
+                                      letterSpacing: '-0.03em',
+                                    },
+                                    children: title,
+                                  },
+                                },
+                              ],
                             },
                           },
                         ],
@@ -218,12 +328,27 @@ async function generateCard(highlight, walletAddress) {
                             type: 'div',
                             props: {
                               style: {
-                                fontSize: '48px',
+                                fontSize: `${s(24)}px`,
                                 fontWeight: '900',
                                 color: '#a855f7',
                                 lineHeight: 1,
+                                display: 'flex',
                               },
                               children: '2025',
+                            },
+                          },
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: `${s(9)}px`,
+                                color: '#a855f7',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.08em',
+                                marginTop: `${s(4)}px`,
+                                display: 'flex',
+                              },
+                              children: 'WRAPPED',
                             },
                           },
                         ],
@@ -232,31 +357,63 @@ async function generateCard(highlight, walletAddress) {
                   ],
                 },
               },
-              // Token ticker (if applicable)
-              ...(showTicker ? [{
+              // Prominent ticker display (for biggest_win, biggest_loss, longest_hold)
+              ...(showProminentTicker ? [{
                 type: 'div',
                 props: {
                   style: {
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '20px',
-                    marginBottom: '32px',
-                    padding: '24px 32px',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
                     background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
-                    borderRadius: '24px',
-                    border: `2px solid ${colors.text}30`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
                   },
                   children: [
                     {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: '56px',
+                          display: 'flex',
+                          fontSize: `${s(28)}px`,
                           fontWeight: '800',
                           color: colors.text,
                           letterSpacing: '-0.02em',
                         },
                         children: `$${tokenSymbol}`,
+                      },
+                    },
+                  ],
+                },
+              }] : []),
+              // Prominent date display (for best_day, best_profit_day)
+              ...(showProminentDate ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
+                    background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
+                  },
+                  children: [
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex',
+                          fontSize: `${s(24)}px`,
+                          fontWeight: '800',
+                          color: colors.text,
+                          letterSpacing: '-0.02em',
+                        },
+                        children: subtitle,
                       },
                     },
                   ],
@@ -272,18 +429,36 @@ async function generateCard(highlight, walletAddress) {
                     justifyContent: 'center',
                     alignItems: 'flex-start',
                     flex: 1,
+                    position: 'relative',
                   },
                   children: [
+                    // Accent bar beside value
                     {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: `${valueFontSize * 2}px`,
+                          position: 'absolute',
+                          left: `${s(-28)}px`,
+                          top: '50%',
+                          width: `${s(4)}px`,
+                          height: `${s(80)}px`,
+                          background: `linear-gradient(180deg, transparent 0%, ${colors.text} 50%, transparent 100%)`,
+                          borderRadius: `${s(2)}px`,
+                          display: 'flex',
+                        },
+                      },
+                    },
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex',
+                          fontSize: `${s(valueFontSize)}px`,
                           fontWeight: 900,
                           color: valueColor,
                           lineHeight: 0.9,
                           letterSpacing: '-0.06em',
-                          maxWidth: '680px',
+                          maxWidth: `${s(340)}px`,
                         },
                         children: value,
                       },
@@ -292,11 +467,14 @@ async function generateCard(highlight, walletAddress) {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: '44px',
+                          display: 'flex',
+                          fontSize: `${s(22)}px`,
                           color: colors.text,
-                          marginTop: '32px',
+                          marginTop: `${s(16)}px`,
                           fontWeight: 600,
                           fontStyle: 'italic',
+                          opacity: 0.9,
+                          letterSpacing: '0.01em',
                         },
                         children: subtitle,
                       },
@@ -304,24 +482,25 @@ async function generateCard(highlight, walletAddress) {
                   ],
                 },
               },
-              // Context
+              // Context section
               {
                 type: 'div',
                 props: {
                   style: {
                     display: 'flex',
                     flexDirection: 'column',
-                    marginBottom: '36px',
+                    marginBottom: `${s(18)}px`,
                   },
                   children: [
                     {
                       type: 'div',
                       props: {
                         style: {
-                          width: '120px',
-                          height: '4px',
+                          width: `${s(60)}px`,
+                          height: `${s(2)}px`,
                           background: `linear-gradient(90deg, ${colors.text} 0%, transparent 100%)`,
-                          marginBottom: '20px',
+                          marginBottom: `${s(10)}px`,
+                          display: 'flex',
                         },
                       },
                     },
@@ -329,9 +508,11 @@ async function generateCard(highlight, walletAddress) {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: '36px',
+                          display: 'flex',
+                          fontSize: `${s(18)}px`,
                           color: '#ffffff',
                           lineHeight: 1.5,
+                          letterSpacing: '-0.01em',
                           fontWeight: 600,
                         },
                         children: context,
@@ -346,48 +527,40 @@ async function generateCard(highlight, walletAddress) {
                 props: {
                   style: {
                     display: 'flex',
-                    justifyContent: 'space-between',
+                    justifyContent: 'flex-end',
                     alignItems: 'center',
-                    paddingTop: '28px',
-                    borderTop: `2px solid ${colors.border.replace('0.4', '0.25')}`,
+                    paddingTop: `${s(14)}px`,
+                    borderTop: `${s(1)}px solid ${colors.border.replace('0.4', '0.25')}`,
                   },
                   children: [
                     {
                       type: 'div',
                       props: {
                         style: {
-                          fontSize: '24px',
-                          color: '#9ca3af',
-                          fontFamily: 'monospace',
-                        },
-                        children: `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`,
-                      },
-                    },
-                    {
-                      type: 'div',
-                      props: {
-                        style: {
                           display: 'flex',
                           alignItems: 'center',
-                          gap: '10px',
+                          gap: `${s(5)}px`,
                         },
                         children: [
                           {
                             type: 'span',
                             props: {
-                              style: { fontSize: '20px', color: '#9ca3af' },
+                              style: { display: 'flex', fontSize: `${s(10)}px`, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em' },
                               children: 'powered by',
                             },
                           },
                           {
                             type: 'span',
                             props: {
-                              style: {
-                                fontSize: '26px',
-                                fontWeight: 'bold',
-                                color: '#ffd700',
-                              },
+                              style: { display: 'flex', fontSize: `${s(13)}px`, fontWeight: 'bold', color: '#ffd700' },
                               children: '$WRAPPED',
+                            },
+                          },
+                          {
+                            type: 'span',
+                            props: {
+                              style: { display: 'flex', fontSize: `${s(10)}px`, color: '#9ca3af', marginLeft: `${s(4)}px` },
+                              children: 'walletwrapped.io',
                             },
                           },
                         ],
