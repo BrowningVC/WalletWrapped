@@ -11,42 +11,77 @@ const path = require('path');
 // Cache font data
 let interRegular = null;
 let interBold = null;
+let fontLoadAttempted = false;
+let fontLoadPromise = null;
 
-// Load fonts once on startup
+// Load fonts with retry logic
 async function loadFonts() {
-  if (interRegular && interBold) return;
+  // Return cached fonts if already loaded
+  if (interRegular && interBold) return true;
 
-  try {
-    // Try to fetch from Google Fonts
-    const fetchFont = async (weight) => {
-      const API = `https://fonts.googleapis.com/css2?family=Inter:wght@${weight}&display=swap`;
-      const css = await (await fetch(API, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-        }
-      })).text();
-
-      const match = css.match(/src: url\((.+)\) format\('(opentype|truetype)'\)/);
-      if (match) {
-        const fontUrl = match[1];
-        const response = await fetch(fontUrl);
-        return Buffer.from(await response.arrayBuffer());
-      }
-      return null;
-    };
-
-    const [regular, bold] = await Promise.all([
-      fetchFont(400),
-      fetchFont(700)
-    ]);
-
-    interRegular = regular;
-    interBold = bold;
-    console.log('[CardGen] Fonts loaded successfully');
-  } catch (error) {
-    console.error('[CardGen] Failed to load fonts:', error.message);
-    // Continue without fonts - satori will use fallback
+  // If already loading, wait for that promise
+  if (fontLoadPromise) {
+    await fontLoadPromise;
+    return !!(interRegular && interBold);
   }
+
+  // Fetch font from Google Fonts API
+  const fetchFont = async (weight, retries = 3) => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const API = `https://fonts.googleapis.com/css2?family=Inter:wght@${weight}&display=swap`;
+        const css = await (await fetch(API, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
+          }
+        })).text();
+
+        const match = css.match(/src: url\((.+)\) format\('(opentype|truetype)'\)/);
+        if (match) {
+          const fontUrl = match[1];
+          const response = await fetch(fontUrl);
+          if (!response.ok) throw new Error(`Font fetch failed: ${response.status}`);
+          const buffer = Buffer.from(await response.arrayBuffer());
+          console.log(`[CardGen] Font weight ${weight} loaded (${buffer.length} bytes)`);
+          return buffer;
+        }
+        throw new Error('Could not parse font URL from CSS');
+      } catch (error) {
+        console.error(`[CardGen] Font ${weight} attempt ${attempt}/${retries} failed:`, error.message);
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
+        }
+      }
+    }
+    return null;
+  };
+
+  fontLoadPromise = (async () => {
+    try {
+      console.log('[CardGen] Loading fonts from Google Fonts...');
+      const [regular, bold] = await Promise.all([
+        fetchFont(400),
+        fetchFont(700)
+      ]);
+
+      if (regular && bold) {
+        interRegular = regular;
+        interBold = bold;
+        console.log('[CardGen] All fonts loaded successfully');
+        return true;
+      } else {
+        console.error('[CardGen] Some fonts failed to load - regular:', !!regular, 'bold:', !!bold);
+        return false;
+      }
+    } catch (error) {
+      console.error('[CardGen] Font loading failed:', error.message);
+      return false;
+    } finally {
+      fontLoadAttempted = true;
+    }
+  })();
+
+  return fontLoadPromise;
 }
 
 // Color schemes
@@ -75,7 +110,10 @@ const COLORS = {
  * @returns {Promise<Buffer>} PNG image buffer
  */
 async function generateCard(highlight, walletAddress) {
-  await loadFonts();
+  const fontsLoaded = await loadFonts();
+  if (!fontsLoaded) {
+    throw new Error('Fonts not available - cannot generate card');
+  }
 
   // Determine color scheme
   const colorScheme =
@@ -419,7 +457,10 @@ async function generateCard(highlight, walletAddress) {
  * @returns {Promise<Buffer>} PNG image buffer
  */
 async function generateSummaryCard(highlights, walletAddress) {
-  await loadFonts();
+  const fontsLoaded = await loadFonts();
+  if (!fontsLoaded) {
+    throw new Error('Fonts not available - cannot generate summary card');
+  }
 
   // Build summary items
   const summaryItems = highlights.map(h => ({
@@ -596,8 +637,16 @@ async function generateSummaryCard(highlights, walletAddress) {
   return pngData.asPng();
 }
 
-// Pre-load fonts on module load
-loadFonts().catch(console.error);
+// Pre-load fonts on module load with detailed logging
+loadFonts().then(success => {
+  if (success) {
+    console.log('[CardGen] Module initialized - fonts ready for card generation');
+  } else {
+    console.error('[CardGen] Module initialized - WARNING: fonts failed to load, card generation will fail');
+  }
+}).catch(err => {
+  console.error('[CardGen] Module initialization error:', err);
+});
 
 module.exports = {
   generateCard,

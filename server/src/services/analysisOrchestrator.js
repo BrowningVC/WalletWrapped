@@ -331,7 +331,7 @@ async function runAnalysis(walletAddress, incremental = false) {
           console.log(`[Card Gen] Card ${index} generated (${buffer.length} bytes, ${duration}ms)`);
           return { cardIndex: index, success: true, duration };
         } catch (err) {
-          console.error(`[Card Gen] Card ${index} failed:`, err.message);
+          console.error(`[Card Gen] Card ${index} failed:`, err.message, err.stack);
           return { cardIndex: index, success: false, error: err.message };
         }
       });
@@ -346,7 +346,7 @@ async function runAnalysis(walletAddress, incremental = false) {
           console.log(`[Card Gen] Summary card generated (${buffer.length} bytes, ${duration}ms)`);
           return { cardIndex: 'summary', success: true, duration };
         } catch (err) {
-          console.error(`[Card Gen] Summary card failed:`, err.message);
+          console.error(`[Card Gen] Summary card failed:`, err.message, err.stack);
           return { cardIndex: 'summary', success: false, error: err.message };
         }
       })());
@@ -363,7 +363,7 @@ async function runAnalysis(walletAddress, incremental = false) {
 
       await emitProgress(walletAddress, 99, 'Cards ready!', txDetails);
     } catch (err) {
-      console.error(`Card generation failed for ${walletAddress}:`, err.message);
+      console.error(`Card generation failed for ${walletAddress}:`, err.message, err.stack);
       // Continue without cards - they can be generated on-demand later
     }
 
