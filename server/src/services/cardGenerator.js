@@ -3,7 +3,9 @@ const fs = require('fs');
 const path = require('path');
 
 // Card generator version - increment to force cache invalidation
-const CARD_GENERATOR_VERSION = 2;
+// v2: Added ticker badge with calendar icon
+// v3: Fixed highlight_type vs type property mismatch (was breaking ticker badge on production)
+const CARD_GENERATOR_VERSION = 3;
 
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
@@ -133,7 +135,8 @@ async function generateCard(highlight, walletAddress) {
   const subtitle = highlight.metadata?.formattedSecondary || highlight.value_secondary || '';
   const title = highlight.title || '';
   const context = highlight.description || '';
-  const highlightType = highlight.highlight_type;
+  // Support both database format (highlight_type) and in-memory format (type)
+  const highlightType = highlight.highlight_type || highlight.type;
   const tokenSymbol = highlight.metadata?.tokenSymbol;
 
   // Calculate font size based on value length (matching client exactly)
