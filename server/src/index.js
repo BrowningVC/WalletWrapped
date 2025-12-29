@@ -415,9 +415,9 @@ process.on('unhandledRejection', (reason, promise) => {
   gracefulShutdown('UNHANDLED_REJECTION');
 });
 
-// Start the server with cluster mode for multi-core utilization
+// Start the server - cluster mode disabled by default for Railway (limited DB connections)
 if (require.main === module) {
-  const USE_CLUSTER = process.env.USE_CLUSTER !== 'false' && NODE_ENV === 'production';
+  const USE_CLUSTER = process.env.USE_CLUSTER === 'true'; // Must explicitly enable
 
   if (USE_CLUSTER && cluster.isPrimary) {
     console.log(`\n========================================`);
