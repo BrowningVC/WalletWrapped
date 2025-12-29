@@ -766,11 +766,11 @@ export default function AnalyzePage() {
             displayProgress >= 90
               ? 'bg-profit-500/10 border border-profit-500/20'
               : displayProgress >= 50
-                ? 'bg-festive-pink/10 border border-festive-pink/20'
+                ? 'bg-profit-500/10 border border-profit-500/20'
                 : 'bg-festive-gold/10 border border-festive-gold/20'
           }`}>
             <div className={`flex items-center justify-center gap-2 ${
-              displayProgress >= 90 ? 'text-profit-500' : displayProgress >= 50 ? 'text-festive-pink' : 'text-festive-gold'
+              displayProgress >= 90 ? 'text-profit-500' : displayProgress >= 50 ? 'text-profit-500' : 'text-festive-gold'
             }`}>
               {displayProgress >= 90 ? (
                 <>
