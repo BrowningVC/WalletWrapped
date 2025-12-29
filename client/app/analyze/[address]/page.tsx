@@ -139,6 +139,29 @@ export default function AnalyzePage() {
   const [lastUpdateTime, setLastUpdateTime] = useState<number>(Date.now());
   const [secondsSinceUpdate, setSecondsSinceUpdate] = useState(0);
   const [progressMessageIndex, setProgressMessageIndex] = useState(0);
+  const [analysisComplete, setAnalysisComplete] = useState(false);
+  const pendingRedirectRef = useRef<string | null>(null);
+
+  // Minimum time to show progress UI before redirecting (allows user to see animation)
+  const MIN_DISPLAY_TIME = 2000; // 2 seconds minimum
+
+  // Handle delayed redirect - ensures user sees progress animation
+  useEffect(() => {
+    if (!analysisComplete || !pendingRedirectRef.current) return;
+
+    const timeElapsed = startTime ? Date.now() - startTime : 0;
+    const remainingTime = Math.max(0, MIN_DISPLAY_TIME - timeElapsed);
+
+    console.log(`Analysis complete, redirecting in ${remainingTime}ms (elapsed: ${timeElapsed}ms)`);
+
+    const timer = setTimeout(() => {
+      if (pendingRedirectRef.current) {
+        router.push(pendingRedirectRef.current);
+      }
+    }, remainingTime);
+
+    return () => clearTimeout(timer);
+  }, [analysisComplete, startTime, router]);
 
   useEffect(() => {
     if (!startTime) return;
@@ -205,8 +228,9 @@ export default function AnalyzePage() {
           setProgress(100);
           setCurrentStage('completing');
           setCurrentStep(6);
-          setStatusMessage('Analysis complete! Redirecting...');
-          router.push(`/highlights/${address}`);
+          setStatusMessage('Analysis complete! Preparing your highlights...');
+          pendingRedirectRef.current = `/highlights/${address}`;
+          setAnalysisComplete(true);
           return;
         }
 
@@ -288,9 +312,14 @@ export default function AnalyzePage() {
     // Handle status events from server (emitted on subscribe if analysis exists)
     newSocket.on('status', (data) => {
       console.log('Socket status:', data);
-      // If analysis is already completed, redirect immediately
+      // If analysis is already completed, show completion and schedule redirect
       if (data.status === 'completed') {
-        router.push(`/highlights/${address}`);
+        setProgress(100);
+        setCurrentStage('completing');
+        setCurrentStep(6);
+        setStatusMessage('Analysis complete! Preparing your highlights...');
+        pendingRedirectRef.current = `/highlights/${address}`;
+        setAnalysisComplete(true);
       }
     });
 
@@ -322,7 +351,7 @@ export default function AnalyzePage() {
       setProgress(100);
       setCurrentStage('completing');
       setCurrentStep(6);
-      setStatusMessage('Analysis complete! Redirecting...');
+      setStatusMessage('Analysis complete! Preparing your highlights...');
 
       // Prefetch the highlights page for instant navigation
       router.prefetch(`/highlights/${address}`);
@@ -332,11 +361,9 @@ export default function AnalyzePage() {
       const img = new Image();
       img.src = `/api/card/${address}/0`;
 
-      // Redirect after a brief moment to show completion state
-      // The card image will continue loading in background
-      setTimeout(() => {
-        router.push(`/highlights/${address}`);
-      }, 300);
+      // Schedule redirect with minimum display time
+      pendingRedirectRef.current = `/highlights/${address}`;
+      setAnalysisComplete(true);
     });
 
     newSocket.on('error', (data) => {
@@ -404,10 +431,11 @@ export default function AnalyzePage() {
 
       if (data.status === 'completed') {
         setProgress(100);
-        setStatusMessage('Analysis complete!');
-        setTimeout(() => {
-          router.push(`/highlights/${address}`);
-        }, 1000);
+        setCurrentStage('completing');
+        setCurrentStep(6);
+        setStatusMessage('Analysis complete! Preparing your highlights...');
+        pendingRedirectRef.current = `/highlights/${address}`;
+        setAnalysisComplete(true);
       }
     } catch (err: any) {
       console.error('Failed to start analysis:', err);
