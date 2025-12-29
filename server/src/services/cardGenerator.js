@@ -8,7 +8,8 @@ const path = require('path');
 // v4: Added win rate badge with trophy icon
 // v5: Improved summary card design with header logo, footer branding, proper layout
 // v6: Summary card - larger boxes, subtitles with ticker/date/wins, removed wallet address
-const CARD_GENERATOR_VERSION = 6;
+// v7: Summary card - inline subtitles (italic, thinner), larger headlines
+const CARD_GENERATOR_VERSION = 7;
 
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
@@ -939,7 +940,7 @@ async function generateSummaryCard(highlights, walletAddress) {
             ],
           },
         },
-        // Summary items container - larger boxes with subtitles
+        // Summary items container - larger headlines with inline metadata
         {
           type: 'div',
           props: {
@@ -965,35 +966,38 @@ async function generateSummaryCard(highlights, walletAddress) {
                   border: '1px solid rgba(139, 92, 246, 0.3)',
                 },
                 children: [
-                  // Left side: Title + subtitle
+                  // Left side: Title with inline subtitle
                   {
                     type: 'div',
                     props: {
                       style: {
                         display: 'flex',
-                        flexDirection: 'column',
-                        gap: '4px',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: '16px',
                       },
                       children: [
+                        // Large headline
                         {
                           type: 'div',
                           props: {
                             style: {
-                              fontSize: '28px',
+                              fontSize: '32px',
                               color: '#ffffff',
                               fontWeight: '700',
                             },
                             children: item.title,
                           },
                         },
-                        // Subtitle (ticker, date, or wins)
+                        // Inline subtitle (ticker, date, or wins) - italic, thinner
                         item.subtitle ? {
                           type: 'div',
                           props: {
                             style: {
-                              fontSize: '18px',
+                              fontSize: '22px',
                               color: '#9ca3af',
-                              fontWeight: '500',
+                              fontWeight: '400',
+                              fontStyle: 'italic',
                             },
                             children: item.subtitle,
                           },
@@ -1006,7 +1010,7 @@ async function generateSummaryCard(highlights, walletAddress) {
                     type: 'div',
                     props: {
                       style: {
-                        fontSize: '36px',
+                        fontSize: '38px',
                         fontWeight: '800',
                         color: item.isProfit === true ? '#22c55e' :
                                item.isProfit === false ? '#ef4444' : '#a855f7',
