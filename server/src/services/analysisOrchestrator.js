@@ -3,6 +3,7 @@ const HighlightsGenerator = require('./highlights');
 const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
 const RateLimiter = require('../utils/rateLimiter');
+const CardGenerator = require('./cardGenerator');
 
 /**
  * Analysis Orchestrator - Manages concurrent wallet analyses without queuing
@@ -304,118 +305,66 @@ async function runAnalysis(walletAddress, incremental = false) {
 
     await emitProgress(walletAddress, 96, 'Generating share cards...', txDetails);
 
-    // OPTIMIZATION: Pre-generate card images SYNCHRONOUSLY before completion
-    // This ensures cards are ready when user arrives at highlights page
-    // Cards are generated in parallel for speed, but we wait for all to complete
-    const clientUrl = process.env.CLIENT_URL || 'https://walletwrapped.com';
-    console.log(`[Card Gen] CLIENT_URL env: ${process.env.CLIENT_URL || '(not set, using default)'}`);
-    console.log(`[Card Gen] Using clientUrl: ${clientUrl}`);
-
-    // Helper to generate a single card with timeout and retry
-    const generateCardWithRetry = async (cardIndex, retryCount = 0) => {
-      const maxRetries = 2;
-      const startTime = Date.now();
-      try {
-        const url = cardIndex === 'summary'
-          ? `${clientUrl}/api/card/${walletAddress}/summary`
-          : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
-
-        if (retryCount === 0) {
-          console.log(`[Card Gen] Starting card ${cardIndex} from ${url}`);
-        } else {
-          console.log(`[Card Gen] Retrying card ${cardIndex} (attempt ${retryCount + 1}/${maxRetries + 1})`);
-        }
-
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 20000); // 20s timeout per card
-
-        const response = await fetch(url, { signal: controller.signal });
-        clearTimeout(timeoutId);
-
-        if (response.ok) {
-          const contentType = response.headers.get('content-type');
-          // Verify we got an image, not an error page
-          if (!contentType || !contentType.includes('image')) {
-            const text = await response.text();
-            console.error(`[Card Gen] Card ${cardIndex} returned non-image content: ${contentType}, body: ${text.slice(0, 200)}`);
-            if (retryCount < maxRetries) {
-              await new Promise(r => setTimeout(r, 1000 * (retryCount + 1))); // Backoff
-              return generateCardWithRetry(cardIndex, retryCount + 1);
-            }
-            return { cardIndex, success: false, error: 'Non-image response' };
-          }
-
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-
-          // Validate image size (PNG should be > 1KB typically)
-          if (buffer.length < 1000) {
-            console.error(`[Card Gen] Card ${cardIndex} too small (${buffer.length} bytes), likely error`);
-            if (retryCount < maxRetries) {
-              await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
-              return generateCardWithRetry(cardIndex, retryCount + 1);
-            }
-            return { cardIndex, success: false, error: 'Image too small' };
-          }
-
-          console.log(`[Card Gen] Card ${cardIndex} received ${buffer.length} bytes, caching to Redis...`);
-          await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
-
-          // Verify cache write by reading back
-          const cached = await CacheManager.getCardImage(walletAddress, cardIndex);
-          const duration = Date.now() - startTime;
-          if (cached && cached.length === buffer.length) {
-            console.log(`[Card Gen] Card ${cardIndex} verified in cache (${cached.length} bytes, ${duration}ms)`);
-          } else {
-            console.error(`[Card Gen] Card ${cardIndex} CACHE VERIFY FAILED! Expected ${buffer.length}, got ${cached ? cached.length : 'null'}`);
-          }
-          return { cardIndex, success: true, duration };
-        }
-
-        const duration = Date.now() - startTime;
-        console.log(`[Card Gen] Card ${cardIndex} failed: HTTP ${response.status} (${duration}ms)`);
-
-        // Retry on 5xx errors
-        if (response.status >= 500 && retryCount < maxRetries) {
-          await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
-          return generateCardWithRetry(cardIndex, retryCount + 1);
-        }
-
-        return { cardIndex, success: false, error: `HTTP ${response.status}` };
-      } catch (err) {
-        const duration = Date.now() - startTime;
-        console.log(`[Card Gen] Card ${cardIndex} error: ${err.message} (${duration}ms)`);
-
-        // Retry on timeout or network errors
-        if (retryCount < maxRetries) {
-          await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
-          return generateCardWithRetry(cardIndex, retryCount + 1);
-        }
-
-        return { cardIndex, success: false, error: err.message };
-      }
-    };
-
-    // Generate all 7 cards in parallel (cards 0-5 + summary)
-    // This takes ~2-4 seconds total instead of 14-28 seconds sequentially
+    // SERVER-SIDE CARD GENERATION
+    // Generate card images directly on the server using Satori + Resvg
+    // This eliminates dependency on external client deployment
     try {
       const cardStartTime = Date.now();
-      const cardPromises = [0, 1, 2, 3, 4, 5, 'summary'].map(idx => generateCardWithRetry(idx));
-      const cardResults = await Promise.all(cardPromises);
+      console.log(`[Card Gen] Starting server-side card generation for ${walletAddress}`);
 
+      // Fetch highlights from database for card generation
+      const dbHighlights = await DatabaseQueries.getHighlights(walletAddress);
+
+      // Reorder highlights to match client UI (overall_pnl last)
+      const reorderedHighlights = [
+        ...dbHighlights.filter(h => h.highlight_type !== 'overall_pnl'),
+        ...dbHighlights.filter(h => h.highlight_type === 'overall_pnl'),
+      ];
+
+      // Generate individual cards (0-5) in parallel
+      const cardPromises = reorderedHighlights.slice(0, 6).map(async (highlight, index) => {
+        const cardGenStart = Date.now();
+        try {
+          const buffer = await CardGenerator.generateCard(highlight, walletAddress);
+          await CacheManager.cacheCardImage(walletAddress, index, buffer);
+          const duration = Date.now() - cardGenStart;
+          console.log(`[Card Gen] Card ${index} generated (${buffer.length} bytes, ${duration}ms)`);
+          return { cardIndex: index, success: true, duration };
+        } catch (err) {
+          console.error(`[Card Gen] Card ${index} failed:`, err.message);
+          return { cardIndex: index, success: false, error: err.message };
+        }
+      });
+
+      // Generate summary card
+      cardPromises.push((async () => {
+        const summaryStart = Date.now();
+        try {
+          const buffer = await CardGenerator.generateSummaryCard(reorderedHighlights.slice(0, 6), walletAddress);
+          await CacheManager.cacheCardImage(walletAddress, 'summary', buffer);
+          const duration = Date.now() - summaryStart;
+          console.log(`[Card Gen] Summary card generated (${buffer.length} bytes, ${duration}ms)`);
+          return { cardIndex: 'summary', success: true, duration };
+        } catch (err) {
+          console.error(`[Card Gen] Summary card failed:`, err.message);
+          return { cardIndex: 'summary', success: false, error: err.message };
+        }
+      })());
+
+      const cardResults = await Promise.all(cardPromises);
       const successCount = cardResults.filter(r => r.success).length;
       const failedCards = cardResults.filter(r => !r.success);
       const cardDuration = Date.now() - cardStartTime;
 
       if (failedCards.length > 0) {
-        console.warn(`Some cards failed to pre-generate for ${walletAddress}:`, failedCards);
+        console.warn(`Some cards failed to generate for ${walletAddress}:`, failedCards);
       }
-      console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress} in ${cardDuration}ms`);
+      console.log(`Generated ${successCount}/${cardResults.length} card images for ${walletAddress} in ${cardDuration}ms`);
 
       await emitProgress(walletAddress, 99, 'Cards ready!', txDetails);
     } catch (err) {
-      console.error(`Card pre-generation failed for ${walletAddress}:`, err.message);
-      // Continue without cards - they'll be generated on-demand
+      console.error(`Card generation failed for ${walletAddress}:`, err.message);
+      // Continue without cards - they can be generated on-demand later
     }
 
     await emitProgress(walletAddress, 100, 'Analysis complete!', txDetails);
