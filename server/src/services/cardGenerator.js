@@ -106,6 +106,12 @@ const COLORS = {
  * @returns {Promise<Buffer>} PNG image buffer
  */
 async function generateCard(highlight, walletAddress) {
+  // Load satori (ES module with dynamic import)
+  await loadSatori();
+  if (!satori) {
+    throw new Error('Satori not available - cannot generate card');
+  }
+
   const fontsLoaded = await loadFonts();
   if (!fontsLoaded) {
     throw new Error('Fonts not available - cannot generate card');
@@ -625,6 +631,12 @@ async function generateCard(highlight, walletAddress) {
  * @returns {Promise<Buffer>} PNG image buffer
  */
 async function generateSummaryCard(highlights, walletAddress) {
+  // Load satori (ES module with dynamic import)
+  await loadSatori();
+  if (!satori) {
+    throw new Error('Satori not available - cannot generate summary card');
+  }
+
   const fontsLoaded = await loadFonts();
   if (!fontsLoaded) {
     throw new Error('Fonts not available - cannot generate summary card');
@@ -805,12 +817,15 @@ async function generateSummaryCard(highlights, walletAddress) {
   return pngData.asPng();
 }
 
-// Pre-load fonts on module load with detailed logging
-loadFonts().then(success => {
-  if (success) {
-    console.log('[CardGen] Module initialized - fonts ready for card generation');
-  } else {
-    console.error('[CardGen] Module initialized - WARNING: fonts failed to load, card generation will fail');
+// Pre-load satori and fonts on module load with detailed logging
+Promise.all([
+  loadSatori(),
+  loadFonts()
+]).then(([satoriResult, fontsSuccess]) => {
+  const satoriOk = !!satori;
+  console.log(`[CardGen] Module initialized - satori: ${satoriOk ? 'ready' : 'FAILED'}, fonts: ${fontsSuccess ? 'ready' : 'FAILED'}`);
+  if (!satoriOk || !fontsSuccess) {
+    console.error('[CardGen] WARNING: Card generation may fail due to missing dependencies');
   }
 }).catch(err => {
   console.error('[CardGen] Module initialization error:', err);
@@ -820,4 +835,5 @@ module.exports = {
   generateCard,
   generateSummaryCard,
   loadFonts,
+  loadSatori,
 };
