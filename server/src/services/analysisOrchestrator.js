@@ -357,9 +357,19 @@ async function runAnalysis(walletAddress, incremental = false) {
       const cardDuration = Date.now() - cardStartTime;
 
       if (failedCards.length > 0) {
-        console.warn(`Some cards failed to generate for ${walletAddress}:`, failedCards);
+        console.warn(`[Card Gen] FAILED cards for ${walletAddress}:`, JSON.stringify(failedCards));
       }
-      console.log(`Generated ${successCount}/${cardResults.length} card images for ${walletAddress} in ${cardDuration}ms`);
+      console.log(`[Card Gen] Generated ${successCount}/${cardResults.length} card images for ${walletAddress} in ${cardDuration}ms`);
+
+      // Verify cards are actually cached before saying "ready"
+      if (successCount > 0) {
+        const verifyStart = Date.now();
+        const card0Exists = await CacheManager.getCardImage(walletAddress, 0);
+        console.log(`[Card Gen] Cache verification: card 0 cached=${!!card0Exists} (${Date.now() - verifyStart}ms)`);
+        if (!card0Exists) {
+          console.error(`[Card Gen] WARNING: Card generation reported success but cache verification failed!`);
+        }
+      }
 
       await emitProgress(walletAddress, 99, 'Cards ready!', txDetails);
     } catch (err) {

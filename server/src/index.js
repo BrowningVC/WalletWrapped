@@ -33,6 +33,9 @@ const { initializeSocketHandlers } = require('./socket/handlers');
 // Analysis Orchestrator (replaces old queue-based worker)
 const AnalysisOrchestrator = require('./services/analysisOrchestrator');
 
+// Card Generator - pre-load fonts at startup
+const CardGenerator = require('./services/cardGenerator');
+
 // Number of CPU cores to use (leave 1 for system)
 const NUM_WORKERS = Math.max(1, os.cpus().length - 1);
 
@@ -311,6 +314,16 @@ async function initializeServices() {
     initializeSocketHandlers(io);
     AnalysisOrchestrator.setSocketIO(io); // Connect orchestrator to Socket.io
     console.log('Socket.io initialized\n');
+
+    // Pre-load fonts for card generation (non-blocking, but ensures fonts are ready)
+    console.log('Pre-loading fonts for card generation...');
+    CardGenerator.loadFonts().then(success => {
+      if (success) {
+        console.log('Card generation fonts ready');
+      } else {
+        console.error('WARNING: Card generation fonts failed to load - cards will fallback to client generation');
+      }
+    });
 
     // Clear orphaned analysis locks on startup (from previous crashes)
     console.log('Clearing orphaned analysis locks...');
