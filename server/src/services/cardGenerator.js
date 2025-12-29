@@ -9,7 +9,8 @@ const path = require('path');
 // v5: Improved summary card design with header logo, footer branding, proper layout
 // v6: Summary card - larger boxes, subtitles with ticker/date/wins, removed wallet address
 // v7: Summary card - inline subtitles (italic, thinner), larger headlines
-const CARD_GENERATOR_VERSION = 7;
+// v8: Added Overall P&L badge with chart icon showing SOL amount
+const CARD_GENERATOR_VERSION = 8;
 
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
@@ -161,10 +162,11 @@ async function generateCard(highlight, walletAddress) {
   const isNegative = typeof value === 'string' && value.startsWith('-');
   const valueColor = isPositive ? '#22c55e' : isNegative ? '#ef4444' : colors.text;
 
-  // Show ticker/date/winrate badge for certain highlight types (matching client)
+  // Show ticker/date/winrate/pnl badge for certain highlight types (matching client)
   const showProminentTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlightType) && tokenSymbol;
   const showProminentDate = (highlightType === 'best_day' || highlightType === 'best_profit_day') && subtitle;
   const showWinRateBadge = highlightType === 'win_rate' && subtitle;
+  const showOverallPnlBadge = highlightType === 'overall_pnl' && subtitle;
 
   // Scale factor for 2x resolution (matching client's HD output)
   const scale = 2;
@@ -553,6 +555,64 @@ async function generateCard(highlight, walletAddress) {
                       },
                     },
                     // Win/Loss text (e.g., "14/112 wins")
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex',
+                          fontSize: `${s(24)}px`,
+                          fontWeight: '800',
+                          color: colors.text,
+                          letterSpacing: '-0.02em',
+                        },
+                        children: subtitle,
+                      },
+                    },
+                  ],
+                },
+              }] : []),
+              // Overall P&L badge with chart icon
+              ...(showOverallPnlBadge ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
+                    background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
+                  },
+                  children: [
+                    // Chart/growth icon
+                    {
+                      type: 'svg',
+                      props: {
+                        width: s(40),
+                        height: s(40),
+                        viewBox: '0 0 64 64',
+                        style: { display: 'flex' },
+                        children: [
+                          // Chart background
+                          { type: 'rect', props: { x: 8, y: 8, width: 48, height: 48, rx: 6, fill: '#1a1a2e', stroke: colors.text, strokeWidth: 2 } },
+                          // Grid lines
+                          { type: 'line', props: { x1: 16, y1: 20, x2: 48, y2: 20, stroke: colors.text, strokeWidth: 1, opacity: 0.2 } },
+                          { type: 'line', props: { x1: 16, y1: 32, x2: 48, y2: 32, stroke: colors.text, strokeWidth: 1, opacity: 0.2 } },
+                          { type: 'line', props: { x1: 16, y1: 44, x2: 48, y2: 44, stroke: colors.text, strokeWidth: 1, opacity: 0.2 } },
+                          // Rising trend line
+                          { type: 'path', props: { d: 'M12 48 L20 40 L28 44 L36 28 L44 32 L52 16', stroke: colors.text, strokeWidth: 3, fill: 'none', strokeLinecap: 'round', strokeLinejoin: 'round' } },
+                          // Data points
+                          { type: 'circle', props: { cx: 20, cy: 40, r: 3, fill: colors.text } },
+                          { type: 'circle', props: { cx: 28, cy: 44, r: 3, fill: colors.text } },
+                          { type: 'circle', props: { cx: 36, cy: 28, r: 3, fill: colors.text } },
+                          { type: 'circle', props: { cx: 44, cy: 32, r: 3, fill: colors.text } },
+                          { type: 'circle', props: { cx: 52, cy: 16, r: 4, fill: '#ffd700' } },
+                        ],
+                      },
+                    },
+                    // SOL amount text (e.g., "(+4457.2 SOL)")
                     {
                       type: 'div',
                       props: {
