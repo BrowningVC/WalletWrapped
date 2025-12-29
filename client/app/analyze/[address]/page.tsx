@@ -361,21 +361,26 @@ export default function AnalyzePage() {
   }, [address, router]);
 
   const startAnalysis = async () => {
+    console.log('=== startAnalysis() called ===');
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+      console.log('API URL:', apiUrl);
 
       // First, fetch CSRF token
+      console.log('Fetching CSRF token...');
       const csrfResponse = await fetch(`${apiUrl}/api/csrf-token`, {
         method: 'GET',
         credentials: 'include',
       });
 
       if (!csrfResponse.ok) {
+        console.error('CSRF fetch failed:', csrfResponse.status, csrfResponse.statusText);
         throw new Error('Failed to get CSRF token');
       }
 
       const csrfData = await csrfResponse.json();
       const csrfToken = csrfData.csrfToken;
+      console.log('Got CSRF token, starting POST...');
 
       // Now make the analyze request with CSRF token
       const response = await fetch(`${apiUrl}/api/analyze`, {
@@ -387,6 +392,7 @@ export default function AnalyzePage() {
         credentials: 'include',
         body: JSON.stringify({ walletAddress: address }),
       });
+      console.log('POST response:', response.status);
 
       const data = await response.json();
 
