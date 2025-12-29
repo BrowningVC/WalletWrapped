@@ -11,6 +11,7 @@
     "refresh-highlights:dry": "node scripts/refresh-all-highlights.js --dry-run"
   },
   "dependencies": {
+    "@fontsource/inter": "^5.2.8",
     "@resvg/resvg-js": "^2.6.2",
     "@solana/web3.js": "^1.95.8",
     "bull": "^4.16.3",

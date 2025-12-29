@@ -60,20 +60,28 @@ const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
  * Make a Helius API POST request (for enhanced transactions)
  * Wrapped with semaphore to prevent rate limiting across concurrent users
  * Includes automatic retry with exponential backoff
+ * Added: 60-second timeout per request to prevent indefinite hangs
  */
 async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
     const url = `${HELIUS_API_URL}${endpoint}?api-key=${HELIUS_API_KEY}`;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Create abort controller for timeout (60s for POST since it handles more data)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
       try {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(body)
+          body: JSON.stringify(body),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           // Handle rate limit specifically with retry
@@ -88,6 +96,15 @@ async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
         }
         return response.json();
       } catch (error) {
+        clearTimeout(timeoutId);
+
+        // Handle timeout specifically
+        if (error.name === 'AbortError') {
+          console.log(`POST request timed out after 60s, retry ${attempt + 1}/${maxRetries}...`);
+          if (attempt >= maxRetries) throw new Error('POST request timed out after max retries');
+          continue;
+        }
+
         if (attempt >= maxRetries) throw error;
         // Exponential backoff for network errors
         const delay = (2 ** attempt) * 1000;
@@ -102,10 +119,15 @@ async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
  * Make a Helius RPC request
  * Wrapped with semaphore to prevent rate limiting across concurrent users
  * Includes automatic retry with exponential backoff
+ * Added: 30-second timeout per request to prevent indefinite hangs
  */
 async function heliusRPC(method, params, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      // Create abort controller for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
       try {
         const response = await fetch(HELIUS_RPC_URL, {
           method: 'POST',
@@ -117,8 +139,11 @@ async function heliusRPC(method, params, maxRetries = 3) {
             id: 1,
             method,
             params
-          })
+          }),
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           if (response.status === 429) {
@@ -137,6 +162,15 @@ async function heliusRPC(method, params, maxRetries = 3) {
         }
         return data.result;
       } catch (error) {
+        clearTimeout(timeoutId);
+
+        // Handle timeout specifically
+        if (error.name === 'AbortError') {
+          console.log(`RPC request timed out after 30s, retry ${attempt + 1}/${maxRetries}...`);
+          if (attempt >= maxRetries) throw new Error('RPC request timed out after max retries');
+          continue;
+        }
+
         if (attempt >= maxRetries) throw error;
         // Exponential backoff for network errors
         const delay = (2 ** attempt) * 1000;

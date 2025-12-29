@@ -3,7 +3,18 @@ const HighlightsGenerator = require('./highlights');
 const DatabaseQueries = require('../database/queries');
 const CacheManager = require('../utils/cacheManager');
 const RateLimiter = require('../utils/rateLimiter');
-const CardGenerator = require('./cardGenerator');
+
+// CardGenerator uses native modules (@resvg/resvg-js) that may fail on some platforms
+let CardGenerator = null;
+let cardGeneratorError = null;
+try {
+  CardGenerator = require('./cardGenerator');
+  console.log('[Orchestrator] CardGenerator module loaded successfully');
+} catch (err) {
+  cardGeneratorError = err;
+  console.error('[Orchestrator] CardGenerator module FAILED to load:', err.message);
+  console.error('[Orchestrator] Stack:', err.stack);
+}
 
 /**
  * Analysis Orchestrator - Manages concurrent wallet analyses without queuing
@@ -309,6 +320,15 @@ async function runAnalysis(walletAddress, incremental = false) {
     // Generate card images directly on the server using Satori + Resvg
     // This eliminates dependency on external client deployment
     try {
+      // Check if CardGenerator module is available
+      if (!CardGenerator) {
+        console.error(`[Card Gen] CardGenerator module not available - skipping server-side generation`);
+        if (cardGeneratorError) {
+          console.error(`[Card Gen] Module load error was: ${cardGeneratorError.message}`);
+        }
+        throw new Error('CardGenerator module not loaded');
+      }
+
       const cardStartTime = Date.now();
       console.log(`[Card Gen] Starting server-side card generation for ${walletAddress}`);
 

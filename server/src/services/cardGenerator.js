@@ -14,7 +14,7 @@ let interBold = null;
 let fontLoadAttempted = false;
 let fontLoadPromise = null;
 
-// Load fonts with retry logic
+// Load fonts from bundled files
 async function loadFonts() {
   // Return cached fonts if already loaded
   if (interRegular && interBold) return true;
@@ -25,54 +25,32 @@ async function loadFonts() {
     return !!(interRegular && interBold);
   }
 
-  // Fetch font from Google Fonts API
-  const fetchFont = async (weight, retries = 3) => {
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const API = `https://fonts.googleapis.com/css2?family=Inter:wght@${weight}&display=swap`;
-        const css = await (await fetch(API, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'
-          }
-        })).text();
-
-        const match = css.match(/src: url\((.+)\) format\('(opentype|truetype)'\)/);
-        if (match) {
-          const fontUrl = match[1];
-          const response = await fetch(fontUrl);
-          if (!response.ok) throw new Error(`Font fetch failed: ${response.status}`);
-          const buffer = Buffer.from(await response.arrayBuffer());
-          console.log(`[CardGen] Font weight ${weight} loaded (${buffer.length} bytes)`);
-          return buffer;
-        }
-        throw new Error('Could not parse font URL from CSS');
-      } catch (error) {
-        console.error(`[CardGen] Font ${weight} attempt ${attempt}/${retries} failed:`, error.message);
-        if (attempt < retries) {
-          await new Promise(r => setTimeout(r, 1000 * attempt)); // Exponential backoff
-        }
-      }
-    }
-    return null;
-  };
-
   fontLoadPromise = (async () => {
     try {
-      console.log('[CardGen] Loading fonts from Google Fonts...');
-      const [regular, bold] = await Promise.all([
-        fetchFont(400),
-        fetchFont(700)
-      ]);
+      console.log('[CardGen] Loading bundled fonts from disk...');
 
-      if (regular && bold) {
-        interRegular = regular;
-        interBold = bold;
-        console.log('[CardGen] All fonts loaded successfully');
-        return true;
-      } else {
-        console.error('[CardGen] Some fonts failed to load - regular:', !!regular, 'bold:', !!bold);
+      const fontsDir = path.join(__dirname, '..', 'assets', 'fonts');
+      const regularPath = path.join(fontsDir, 'Inter-Regular.ttf');
+      const boldPath = path.join(fontsDir, 'Inter-Bold.ttf');
+
+      // Check if font files exist
+      if (!fs.existsSync(regularPath)) {
+        console.error('[CardGen] Inter-Regular.ttf not found at:', regularPath);
         return false;
       }
+      if (!fs.existsSync(boldPath)) {
+        console.error('[CardGen] Inter-Bold.ttf not found at:', boldPath);
+        return false;
+      }
+
+      // Load fonts from disk
+      interRegular = fs.readFileSync(regularPath);
+      interBold = fs.readFileSync(boldPath);
+
+      console.log(`[CardGen] Inter-Regular loaded (${interRegular.length} bytes)`);
+      console.log(`[CardGen] Inter-Bold loaded (${interBold.length} bytes)`);
+      console.log('[CardGen] All fonts loaded successfully from bundled files');
+      return true;
     } catch (error) {
       console.error('[CardGen] Font loading failed:', error.message);
       return false;
