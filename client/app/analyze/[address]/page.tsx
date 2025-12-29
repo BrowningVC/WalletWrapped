@@ -903,21 +903,19 @@ export default function AnalyzePage() {
                 return (
                   <div key={stage.key} className="flex flex-col items-center flex-1 relative z-10">
                     {/* Stage circle */}
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all duration-300 ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300 ${
                       isComplete
-                        ? 'bg-gradient-to-r from-festive-gold to-festive-pink shadow-lg shadow-festive-gold/20'
+                        ? 'bg-gradient-to-r from-festive-gold to-festive-pink shadow-lg shadow-festive-gold/20 text-dark-900'
                         : isActive
-                          ? 'bg-dark-800 ring-2 ring-festive-gold ring-offset-2 ring-offset-dark-900 animate-pulse'
-                          : 'bg-dark-800 border border-dark-600'
+                          ? 'bg-dark-800 ring-2 ring-festive-gold ring-offset-2 ring-offset-dark-900 text-festive-gold'
+                          : 'bg-dark-800 border border-dark-600 text-gray-500'
                     }`}>
                       {isComplete ? (
-                        <svg className="w-4 h-4 text-dark-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
                         </svg>
                       ) : (
-                        <div className={`${isActive ? 'animate-bounce' : ''} ${isActive ? 'text-festive-gold' : 'text-gray-500'}`}>
-                          <StageIcon stage={stage.iconKey} className="w-4 h-4" />
-                        </div>
+                        index + 1
                       )}
                     </div>
 
