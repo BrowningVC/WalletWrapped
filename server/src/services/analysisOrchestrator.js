@@ -290,39 +290,51 @@ async function runAnalysis(walletAddress, incremental = false) {
       dailyPNL: JSON.stringify(dailyPNL)
     });
 
-    await emitProgress(walletAddress, 96, 'Generating your year into PNL cards...', txDetails);
+    await emitProgress(walletAddress, 98, 'Finalizing analysis...', txDetails);
 
-    // Pre-generate and cache all card images for instant loading
-    const clientUrl = process.env.CLIENT_URL || 'http://localhost:3000';
+    // Pre-generate and cache all card images in the background (non-blocking)
+    // Cards will be generated on-demand if this fails
+    const clientUrl = process.env.CLIENT_URL || 'https://walletwrapped.com';
 
-    // Generate all 6 cards + summary in parallel, fetch PNG and cache in Redis
-    const cardPromises = [0, 1, 2, 3, 4, 5, 'summary'].map(async (cardIndex) => {
+    // Fire and forget - don't wait for card generation
+    (async () => {
       try {
-        const url = cardIndex === 'summary'
-          ? `${clientUrl}/api/card/${walletAddress}/summary`
-          : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
+        const cardPromises = [0, 1, 2, 3, 4, 5, 'summary'].map(async (cardIndex) => {
+          try {
+            const url = cardIndex === 'summary'
+              ? `${clientUrl}/api/card/${walletAddress}/summary`
+              : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
 
-        const response = await fetch(url);
-        if (response.ok) {
-          const arrayBuffer = await response.arrayBuffer();
-          const buffer = Buffer.from(arrayBuffer);
-          await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
-          return { cardIndex, success: true };
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout per card
+
+            const response = await fetch(url, { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+              const arrayBuffer = await response.arrayBuffer();
+              const buffer = Buffer.from(arrayBuffer);
+              await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
+              return { cardIndex, success: true };
+            }
+            return { cardIndex, success: false, error: `HTTP ${response.status}` };
+          } catch (err) {
+            return { cardIndex, success: false, error: err.message };
+          }
+        });
+
+        const cardResults = await Promise.all(cardPromises);
+        const successCount = cardResults.filter(r => r.success).length;
+        const failedCards = cardResults.filter(r => !r.success);
+
+        if (failedCards.length > 0) {
+          console.warn(`Some cards failed to pre-generate for ${walletAddress}:`, failedCards);
         }
-        return { cardIndex, success: false, error: `HTTP ${response.status}` };
+        console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress}`);
       } catch (err) {
-        return { cardIndex, success: false, error: err.message };
+        console.error(`Card pre-generation failed for ${walletAddress}:`, err.message);
       }
-    });
-
-    const cardResults = await Promise.all(cardPromises);
-    const successCount = cardResults.filter(r => r.success).length;
-    const failedCards = cardResults.filter(r => !r.success);
-
-    if (failedCards.length > 0) {
-      console.warn(`Some cards failed to pre-generate for ${walletAddress}:`, failedCards);
-    }
-    console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress}`);
+    })();
 
     await emitProgress(walletAddress, 100, 'Analysis complete!', txDetails);
 
