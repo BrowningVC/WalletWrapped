@@ -208,9 +208,10 @@ export async function GET(
     const highlightType = highlight.type;
     const tokenSymbol = highlight.metadata?.tokenSymbol;
 
-    // Determine if this card should show a prominent ticker/date
+    // Determine if this card should show a prominent ticker/date/winrate badge
     const showProminentTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlightType) && tokenSymbol;
     const showProminentDate = highlightType === 'best_day' || highlightType === 'best_profit_day';
+    const showWinRateBadge = highlightType === 'win_rate' && subtitle;
 
     // Calculate font size based on value length (ensure it fits in 344px width)
     // Container width: 400px - 56px padding = 344px usable width
@@ -546,6 +547,55 @@ export async function GET(
                     {/* Highlighted day indicator */}
                     <circle cx="32" cy="37" r="8" fill={colors.text} opacity="0.3" />
                     <circle cx="32" cy="37" r="5" fill={colors.text} />
+                  </svg>
+                  <div
+                    style={{
+                      display: 'flex',
+                      fontSize: `${s(24)}px`,
+                      fontWeight: '800',
+                      color: colors.text,
+                      letterSpacing: '-0.02em',
+                      textShadow: `0 0 ${s(30)}px ${colors.text}40`,
+                    }}
+                  >
+                    {subtitle}
+                  </div>
+                </div>
+              )}
+              {showWinRateBadge && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
+                    background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
+                  }}
+                >
+                  {/* Trophy icon */}
+                  <svg
+                    width={s(40)}
+                    height={s(40)}
+                    viewBox="0 0 64 64"
+                    style={{ display: 'flex' }}
+                  >
+                    {/* Trophy cup body */}
+                    <path d="M20 12 H44 L42 36 H22 Z" fill={colors.text} opacity="0.9" />
+                    {/* Trophy cup rim */}
+                    <rect x="18" y="8" width="28" height="6" rx="2" fill={colors.text} />
+                    {/* Left handle */}
+                    <path d="M20 16 Q8 16 8 26 Q8 34 18 34" stroke={colors.text} strokeWidth="4" fill="none" strokeLinecap="round" />
+                    {/* Right handle */}
+                    <path d="M44 16 Q56 16 56 26 Q56 34 46 34" stroke={colors.text} strokeWidth="4" fill="none" strokeLinecap="round" />
+                    {/* Trophy stem */}
+                    <rect x="28" y="36" width="8" height="10" fill={colors.text} opacity="0.8" />
+                    {/* Trophy base */}
+                    <rect x="22" y="46" width="20" height="6" rx="2" fill={colors.text} />
+                    {/* Star on trophy */}
+                    <path d="M32 18 L34 24 L40 24 L35 28 L37 34 L32 30 L27 34 L29 28 L24 24 L30 24 Z" fill="#ffd700" />
                   </svg>
                   <div
                     style={{

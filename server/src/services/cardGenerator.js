@@ -5,7 +5,8 @@ const path = require('path');
 // Card generator version - increment to force cache invalidation
 // v2: Added ticker badge with calendar icon
 // v3: Fixed highlight_type vs type property mismatch (was breaking ticker badge on production)
-const CARD_GENERATOR_VERSION = 3;
+// v4: Added win rate badge with trophy icon
+const CARD_GENERATOR_VERSION = 4;
 
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
@@ -157,9 +158,10 @@ async function generateCard(highlight, walletAddress) {
   const isNegative = typeof value === 'string' && value.startsWith('-');
   const valueColor = isPositive ? '#22c55e' : isNegative ? '#ef4444' : colors.text;
 
-  // Show ticker/date for certain highlight types (matching client)
+  // Show ticker/date/winrate badge for certain highlight types (matching client)
   const showProminentTicker = ['biggest_win', 'biggest_loss', 'longest_hold'].includes(highlightType) && tokenSymbol;
   const showProminentDate = (highlightType === 'best_day' || highlightType === 'best_profit_day') && subtitle;
+  const showWinRateBadge = highlightType === 'win_rate' && subtitle;
 
   // Scale factor for 2x resolution (matching client's HD output)
   const scale = 2;
@@ -490,6 +492,64 @@ async function generateCard(highlight, walletAddress) {
                       },
                     },
                     // Date text
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex',
+                          fontSize: `${s(24)}px`,
+                          fontWeight: '800',
+                          color: colors.text,
+                          letterSpacing: '-0.02em',
+                        },
+                        children: subtitle,
+                      },
+                    },
+                  ],
+                },
+              }] : []),
+              // Win Rate badge with trophy icon
+              ...(showWinRateBadge ? [{
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: `${s(10)}px`,
+                    marginBottom: `${s(16)}px`,
+                    padding: `${s(12)}px ${s(16)}px`,
+                    background: `linear-gradient(135deg, ${colors.text}15 0%, ${colors.text}08 100%)`,
+                    borderRadius: `${s(12)}px`,
+                    border: `${s(1)}px solid ${colors.text}30`,
+                  },
+                  children: [
+                    // Trophy icon
+                    {
+                      type: 'svg',
+                      props: {
+                        width: s(40),
+                        height: s(40),
+                        viewBox: '0 0 64 64',
+                        style: { display: 'flex' },
+                        children: [
+                          // Trophy cup body
+                          { type: 'path', props: { d: 'M20 12 H44 L42 36 H22 Z', fill: colors.text, opacity: 0.9 } },
+                          // Trophy cup rim
+                          { type: 'rect', props: { x: 18, y: 8, width: 28, height: 6, rx: 2, fill: colors.text } },
+                          // Left handle
+                          { type: 'path', props: { d: 'M20 16 Q8 16 8 26 Q8 34 18 34', stroke: colors.text, strokeWidth: 4, fill: 'none', strokeLinecap: 'round' } },
+                          // Right handle
+                          { type: 'path', props: { d: 'M44 16 Q56 16 56 26 Q56 34 46 34', stroke: colors.text, strokeWidth: 4, fill: 'none', strokeLinecap: 'round' } },
+                          // Trophy stem
+                          { type: 'rect', props: { x: 28, y: 36, width: 8, height: 10, fill: colors.text, opacity: 0.8 } },
+                          // Trophy base
+                          { type: 'rect', props: { x: 22, y: 46, width: 20, height: 6, rx: 2, fill: colors.text } },
+                          // Star on trophy
+                          { type: 'path', props: { d: 'M32 18 L34 24 L40 24 L35 28 L37 34 L32 30 L27 34 L29 28 L24 24 L30 24 Z', fill: '#ffd700' } },
+                        ],
+                      },
+                    },
+                    // Win/Loss text (e.g., "14/112 wins")
                     {
                       type: 'div',
                       props: {

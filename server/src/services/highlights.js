@@ -223,6 +223,7 @@ class HighlightsGenerator {
         tokenMint: winner.tokenMint,
         pnlSol: this.roundSol(pnlSol),
         pnlUsd: this.roundUsd(pnlUsd),
+        isProfit: true,
         formattedPrimary: this.formatUsd(pnlUsd),
         formattedSecondary: `(${this.formatSol(pnlSol)} SOL)`
       }
@@ -272,6 +273,7 @@ class HighlightsGenerator {
         tokenMint: loser.tokenMint,
         pnlSol: this.roundSol(pnlSol),
         pnlUsd: this.roundUsd(pnlUsd),
+        isProfit: false,
         formattedPrimary: this.formatUsd(pnlUsd),
         formattedSecondary: `(${this.formatSol(pnlSol)} SOL)`
       }
@@ -456,6 +458,7 @@ class HighlightsGenerator {
         date: bestDay.date,
         profitSol: this.roundSol(bestDay.profitSol),
         profitUsd: this.roundUsd(profitUsd),
+        isProfit: true,
         formattedPrimary: this.formatUsd(profitUsd),
         formattedSecondary: `(${this.formatSol(bestDay.profitSol)} SOL)`
       }
