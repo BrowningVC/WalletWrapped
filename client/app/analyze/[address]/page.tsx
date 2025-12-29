@@ -141,6 +141,7 @@ export default function AnalyzePage() {
   const [progressMessageIndex, setProgressMessageIndex] = useState(0);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [pageReady, setPageReady] = useState(false);
+  const [analysisStarted, setAnalysisStarted] = useState(false); // Track when POST completes
   const pendingRedirectRef = useRef<string | null>(null);
   const pageLoadTimeRef = useRef<number>(Date.now());
 
@@ -233,7 +234,8 @@ export default function AnalyzePage() {
   progressRef.current = progress;
 
   useEffect(() => {
-    if (!address || error) return;
+    // Don't start polling until POST has completed (analysis record exists)
+    if (!address || error || !analysisStarted) return;
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
     let pollCount = 0;
@@ -297,14 +299,14 @@ export default function AnalyzePage() {
       });
     };
 
-    // Delay first poll by 500ms to let socket establish
-    const initialDelay = setTimeout(schedulePoll, 500);
+    // Start polling immediately since analysisStarted means POST completed
+    console.log('📊 Starting polling (analysis confirmed started)');
+    schedulePoll();
 
     return () => {
       isCancelled = true;
-      clearTimeout(initialDelay);
     };
-  }, [address, error, router]);
+  }, [address, error, analysisStarted]);
 
   useEffect(() => {
     if (!address) return;
@@ -494,6 +496,9 @@ export default function AnalyzePage() {
       }
 
       console.log('✅ Analysis started successfully:', data);
+
+      // Mark analysis as started - this enables polling
+      setAnalysisStarted(true);
 
       if (data.status === 'completed') {
         setProgress(100);
