@@ -186,7 +186,8 @@ export default function AnalyzePage() {
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
     let pollCount = 0;
-    const maxPolls = 120; // 2 minutes max polling
+    const maxPolls = 180; // 3 minutes max polling
+    let currentInterval: NodeJS.Timeout;
 
     const pollStatus = async () => {
       try {
@@ -221,24 +222,46 @@ export default function AnalyzePage() {
       }
     };
 
-    // Poll every 3 seconds as fallback
-    const pollInterval = setInterval(() => {
-      pollCount++;
-      if (pollCount > maxPolls) {
-        clearInterval(pollInterval);
-        return;
-      }
-      pollStatus();
-    }, 3000);
+    // Poll more frequently at the start (every 1 second for first 10 polls)
+    // Then slow down to every 2 seconds
+    const startPolling = () => {
+      currentInterval = setInterval(() => {
+        pollCount++;
+        if (pollCount > maxPolls) {
+          clearInterval(currentInterval);
+          return;
+        }
+        pollStatus();
 
-    return () => clearInterval(pollInterval);
+        // After first 10 polls, slow down the interval
+        if (pollCount === 10) {
+          clearInterval(currentInterval);
+          currentInterval = setInterval(() => {
+            pollCount++;
+            if (pollCount > maxPolls) {
+              clearInterval(currentInterval);
+              return;
+            }
+            pollStatus();
+          }, 2000);
+        }
+      }, 1000);
+    };
+
+    // Delay first poll by 500ms to let socket establish
+    const initialDelay = setTimeout(startPolling, 500);
+
+    return () => {
+      clearTimeout(initialDelay);
+      clearInterval(currentInterval);
+    };
   }, [address, progress, error, router]);
 
   useEffect(() => {
     if (!address) return;
 
-    startAnalysis();
     setStartTime(Date.now());
+    let analysisStarted = false;
 
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
     const newSocket = io(socketUrl, {
@@ -250,7 +273,27 @@ export default function AnalyzePage() {
     newSocket.on('connect', () => {
       console.log('Socket connected');
       newSocket.emit('subscribe', { walletAddress: address });
+
+      // Wait a brief moment for subscription to be processed, then start analysis
+      // This ensures we're listening before the server starts emitting events
+      setTimeout(() => {
+        if (!analysisStarted) {
+          analysisStarted = true;
+          console.log('Socket ready - starting analysis');
+          startAnalysis();
+        }
+      }, 100);
     });
+
+    // Fallback: if socket doesn't connect within 2 seconds, start analysis anyway
+    // This ensures analysis runs even if WebSockets are blocked
+    const connectionTimeout = setTimeout(() => {
+      if (!analysisStarted) {
+        analysisStarted = true;
+        console.log('Socket connection timeout - starting analysis with polling fallback');
+        startAnalysis();
+      }
+    }, 2000);
 
     newSocket.on('progress', (data: ProgressData) => {
       console.log('Progress update:', data);
@@ -300,6 +343,7 @@ export default function AnalyzePage() {
     setSocket(newSocket);
 
     return () => {
+      clearTimeout(connectionTimeout);
       if (newSocket) {
         newSocket.emit('unsubscribe', { walletAddress: address });
         newSocket.disconnect();
