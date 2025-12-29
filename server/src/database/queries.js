@@ -464,7 +464,7 @@ class DatabaseQueries {
 
     const columnTypes = [
       'text', 'text', 'text', 'text',
-      'text', 'text', 'jsonb', 'integer', 'text'
+      'numeric', 'numeric', 'jsonb', 'integer', 'text'
     ];
 
     await batchUpsert(
