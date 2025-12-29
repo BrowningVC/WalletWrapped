@@ -1,11 +1,19 @@
 /** @type {import('next').NextConfig} */
+
+// Production server URL
+const PRODUCTION_SERVER = 'https://wallet-wrapped-server-production.up.railway.app';
+
 const nextConfig = {
   reactStrictMode: true,
 
   // Environment variables exposed to browser
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002',
-    NEXT_PUBLIC_SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002',
+    NEXT_PUBLIC_API_URL: process.env.NODE_ENV === 'production'
+      ? PRODUCTION_SERVER
+      : (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002'),
+    NEXT_PUBLIC_SOCKET_URL: process.env.NODE_ENV === 'production'
+      ? PRODUCTION_SERVER
+      : (process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002'),
   },
 
   // Image optimization
