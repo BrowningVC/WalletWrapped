@@ -288,7 +288,8 @@ class PNLCalculator {
   static processBuy(position, tx) {
     // Include fee in cost basis
     const totalCost = tx.solAmount + tx.feeSol;
-    const costPerToken = totalCost / tx.tokenAmount;
+    // Guard against division by zero (invalid/zero-amount transactions)
+    const costPerToken = tx.tokenAmount > 0 ? totalCost / tx.tokenAmount : 0;
 
     // Add to FIFO queue
     position.buyLots.push({

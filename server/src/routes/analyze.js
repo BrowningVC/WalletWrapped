@@ -109,13 +109,20 @@ router.post('/analyze', validateCSRFToken, async (req, res) => {
 
       // If currently processing, return status
       if (existing.analysis_status === 'processing') {
-        // Get progress from cache
+        // Get progress from cache with safe JSON parsing
         const progress = await CacheManager.getAnalysisProgress(trimmedAddress);
-        const progressData = progress ? JSON.parse(progress) : null;
+        let progressData = null;
+        if (progress) {
+          try {
+            progressData = JSON.parse(progress);
+          } catch (parseErr) {
+            console.warn(`Invalid progress JSON for ${trimmedAddress}:`, parseErr.message);
+          }
+        }
 
         return res.json({
           status: 'processing',
-          progress: existing.progress_percent || 0,
+          progress: progressData?.percent || existing.progress_percent || 0,
           message: progressData?.message || 'Analysis in progress...',
           startedAt: existing.started_at
         });
@@ -239,12 +246,16 @@ router.get('/analyze/:address/status', statusRateLimiter, async (req, res) => {
       });
     }
 
-    // Get real-time progress from cache if processing
+    // Get real-time progress from cache if processing (with safe JSON parsing)
     let progressData = null;
     if (analysis.analysis_status === 'processing') {
       const progress = await CacheManager.getAnalysisProgress(address);
       if (progress) {
-        progressData = JSON.parse(progress);
+        try {
+          progressData = JSON.parse(progress);
+        } catch (parseErr) {
+          console.warn(`Invalid progress JSON for ${address}:`, parseErr.message);
+        }
       }
     }
 

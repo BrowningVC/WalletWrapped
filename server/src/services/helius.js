@@ -296,13 +296,19 @@ class HeliusService {
 
       const response = await heliusRPC('getSignaturesForAddress', params);
 
-      if (!response || response.length === 0) {
+      if (!response || !Array.isArray(response) || response.length === 0) {
         break;
       }
 
-      const signatures = response.map(tx => tx.signature);
+      // Filter out null/invalid entries and extract signatures
+      const signatures = response
+        .filter(tx => tx && tx.signature)
+        .map(tx => tx.signature);
       allSignatures.push(...signatures);
-      beforeSignature = response[response.length - 1]?.signature;
+
+      // Get cursor from last valid entry
+      const lastValidTx = response.filter(tx => tx && tx.signature).pop();
+      beforeSignature = lastValidTx?.signature;
       batchCount++;
 
       // Report progress during signature collection - report on every batch for faster feedback
@@ -955,7 +961,12 @@ class HeliusService {
     const transactions = [];
     let cursor = null;
 
-    while (true) {
+    // Safety limit to prevent infinite loops (max 100k transactions for incremental)
+    const MAX_INCREMENTAL_BATCHES = 100;
+    let batchCount = 0;
+
+    while (batchCount < MAX_INCREMENTAL_BATCHES) {
+      batchCount++;
       const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
       if (cursor) {
         params[1].before = cursor;
@@ -963,8 +974,14 @@ class HeliusService {
 
       const response = await heliusRPC('getSignaturesForAddress', params);
 
+      // Safety: break if response is empty or invalid
+      if (!response || !Array.isArray(response) || response.length === 0) {
+        console.log(`Empty response received, ending incremental fetch`);
+        break;
+      }
+
       // Stop when we reach the afterSignature
-      const stopIndex = response.findIndex(tx => tx.signature === afterSignature);
+      const stopIndex = response.findIndex(tx => tx && tx.signature === afterSignature);
 
       if (stopIndex !== -1) {
         // Only take transactions before the stopIndex
@@ -973,13 +990,25 @@ class HeliusService {
         break;
       }
 
-      transactions.push(...response);
+      // Filter out any null/invalid entries before adding
+      const validTransactions = response.filter(tx => tx && tx.signature);
+      transactions.push(...validTransactions);
 
-      if (response.length < BATCH_SIZE) {
+      if (response.length < SIGNATURE_BATCH_SIZE) {
         break; // No more transactions
       }
 
-      cursor = response[response.length - 1].signature;
+      // Safety: ensure cursor is valid before continuing
+      const lastTx = response[response.length - 1];
+      if (!lastTx || !lastTx.signature) {
+        console.warn(`Invalid cursor at end of batch, ending fetch`);
+        break;
+      }
+      cursor = lastTx.signature;
+    }
+
+    if (batchCount >= MAX_INCREMENTAL_BATCHES) {
+      console.warn(`Hit max batch limit (${MAX_INCREMENTAL_BATCHES}) for incremental fetch`);
     }
 
     console.log(`Fetched ${transactions.length} new transactions since ${afterSignature}`);

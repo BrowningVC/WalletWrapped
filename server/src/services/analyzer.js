@@ -76,8 +76,33 @@ class WalletAnalyzer {
         }
       );
 
+      // Handle empty wallet gracefully - return valid but empty result
       if (rawTransactions.length === 0) {
-        throw new Error('No transactions found for this wallet');
+        console.log(`Wallet ${walletAddress} has no transactions`);
+        const duration = Date.now() - startTime;
+        return {
+          walletAddress,
+          transactionCount: 0,
+          positionCount: 0,
+          positions: {},
+          dailyPNL: [],
+          summary: {
+            walletAddress,
+            totalRealizedPNL: 0,
+            totalUnrealizedPNL: 0,
+            totalPNL: 0,
+            winRate: 0,
+            totalTrades: 0,
+            profitableTrades: 0,
+            losingTrades: 0,
+            activePositions: 0,
+            closedPositions: 0,
+            totalSOLSpent: 0,
+            totalSOLReceived: 0,
+            transactionCount: 0
+          },
+          duration
+        };
       }
 
       const totalTx = rawTransactions.length;

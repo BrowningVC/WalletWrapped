@@ -23,6 +23,7 @@ const DatabaseQueries = require('./database/queries');
 const analyzeRoutes = require('./routes/analyze');
 const walletRoutes = require('./routes/wallet');
 const monitorRoutes = require('./routes/monitor');
+const adminRoutes = require('./routes/admin');
 
 // Middleware
 const { attachCSRFToken } = require('./middleware/csrf');
@@ -260,6 +261,7 @@ app.get('/api/stats', async (req, res) => {
 app.use('/api', analyzeRoutes);
 app.use('/api', walletRoutes);
 app.use('/api/monitor', monitorRoutes);
+app.use('/api/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {
