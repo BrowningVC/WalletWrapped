@@ -424,10 +424,19 @@ function getActiveWallets() {
   return Array.from(activeAnalyses.keys());
 }
 
+/**
+ * Check if a specific wallet analysis is currently active in memory
+ * Used to detect stale Redis locks from server crashes
+ */
+function isAnalysisActive(walletAddress) {
+  return activeAnalyses.has(walletAddress);
+}
+
 module.exports = {
   runAnalysis,
   cancelAnalysis,
   setSocketIO,
   getActiveCount,
-  getActiveWallets
+  getActiveWallets,
+  isAnalysisActive
 };

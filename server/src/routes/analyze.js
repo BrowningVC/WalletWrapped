@@ -112,12 +112,33 @@ router.post('/analyze', validateCSRFToken, async (req, res) => {
     // Prevent duplicate concurrent analyses
     const hasLock = await RateLimiter.preventDuplicateAnalysis(trimmedAddress);
     if (!hasLock) {
-      // Analysis already in progress (from another request)
-      return res.json({
-        status: 'processing',
-        progress: 0,
-        message: 'Analysis already in progress'
-      });
+      // Lock exists - but is analysis actually running?
+      // This handles stale locks from server crashes/restarts
+      const isActuallyRunning = AnalysisOrchestrator.isAnalysisActive(trimmedAddress);
+
+      if (isActuallyRunning) {
+        // Analysis is truly running - don't start another
+        return res.json({
+          status: 'processing',
+          progress: 0,
+          message: 'Analysis already in progress'
+        });
+      }
+
+      // Lock is stale (orphaned from crash) - release it and continue
+      console.log(`Releasing stale lock for ${trimmedAddress} (no active analysis found)`);
+      await RateLimiter.releaseAnalysisLock(trimmedAddress);
+
+      // Try to acquire lock again
+      const retryLock = await RateLimiter.preventDuplicateAnalysis(trimmedAddress);
+      if (!retryLock) {
+        // Another request grabbed it first - that's fine
+        return res.json({
+          status: 'processing',
+          progress: 0,
+          message: 'Analysis starting...'
+        });
+      }
     }
 
     // Check if we should queue the request due to capacity
