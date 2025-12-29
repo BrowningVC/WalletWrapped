@@ -197,11 +197,14 @@ class HeliusService {
    * Fetch all signatures for a wallet (fast, no transaction details)
    * Returns array of signature strings
    * Enforces MAX_TRANSACTION_LIMIT to prevent bot wallet analysis
+   *
+   * Optimized: Reports progress immediately after first batch for faster UX
    */
   static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
     const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 30000;
     const allSignatures = [];
     let beforeSignature = null;
+    let batchCount = 0;
 
     while (true) {
       const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
@@ -218,8 +221,9 @@ class HeliusService {
       const signatures = response.map(tx => tx.signature);
       allSignatures.push(...signatures);
       beforeSignature = response[response.length - 1]?.signature;
+      batchCount++;
 
-      // Report progress during signature collection
+      // Report progress during signature collection - report on every batch for faster feedback
       progressCallback(0, allSignatures.length, 'counting');
 
       // Check if we've exceeded the transaction limit (anti-bot protection)
@@ -237,6 +241,7 @@ class HeliusService {
       }
     }
 
+    console.log(`Collected ${allSignatures.length} signatures in ${batchCount} batches`);
     return allSignatures;
   }
 

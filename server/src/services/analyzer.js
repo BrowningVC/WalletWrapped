@@ -18,24 +18,38 @@ class WalletAnalyzer {
     const startTime = Date.now();
 
     try {
-      // Step 1: Fetch all transactions (0-40%)
-      // Phase 1 (0-13%): Count signatures to get accurate total
-      // Phase 2 (13-40%): Fetch enhanced transaction data
-      progressCallback(5, 'Fetching transaction history...', { fetched: 0, total: null });
+      // Step 1: Fetch all transactions (4-40%)
+      // Phase 1 (4-12%): Count signatures - progress scales quickly at first for better UX
+      // Phase 2 (12-40%): Fetch enhanced transaction data
+      progressCallback(4, 'Scanning wallet history...', { fetched: 0, total: null });
 
+      let lastCountUpdate = 0;
       const rawTransactions = await HeliusService.fetchAllTransactions(
         walletAddress,
         (fetched, total, phase) => {
           if (phase === 'counting') {
-            // During signature collection, show counting progress (5-13%)
-            progressCallback(
-              Math.min(5 + (total / 10000) * 8, 13), // Cap at 13%, scale based on count
-              `Counting transactions: ${total.toLocaleString()} found...`,
-              { fetched: 0, total: total }
-            );
+            // During signature collection, show counting progress (4-12%)
+            // Use logarithmic scaling for faster initial progress feel
+            // First 1000 txs = 4-8%, remaining = 8-12%
+            let countProgress;
+            if (total <= 1000) {
+              countProgress = 4 + (total / 1000) * 4; // 4-8% for first 1000
+            } else {
+              countProgress = 8 + Math.min((total - 1000) / 9000, 1) * 4; // 8-12% for rest
+            }
+
+            // Throttle updates to every 500 signatures to avoid overwhelming the socket
+            if (total - lastCountUpdate >= 500 || total < 500) {
+              lastCountUpdate = total;
+              progressCallback(
+                Math.min(countProgress, 12),
+                `Counting transactions: ${total.toLocaleString()} found...`,
+                { fetched: 0, total: total }
+              );
+            }
           } else {
-            // During enhanced data fetch, show fetch progress (13-40%)
-            const progress = 13 + (fetched / Math.max(total, 1)) * 27;
+            // During enhanced data fetch, show fetch progress (12-40%)
+            const progress = 12 + (fetched / Math.max(total, 1)) * 28;
             progressCallback(
               Math.min(progress, 40),
               `Fetching transactions: ${fetched.toLocaleString()} of ${total.toLocaleString()}...`,
