@@ -312,7 +312,7 @@ export default function AnalyzePage() {
     if (!address) return;
 
     setStartTime(Date.now());
-    let analysisStarted = false;
+    let postRequestSent = false; // Track if we've already triggered startAnalysis
 
     const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3002';
     const newSocket = io(socketUrl, {
@@ -329,8 +329,8 @@ export default function AnalyzePage() {
       // Wait a brief moment for subscription to be processed, then start analysis
       // This ensures we're listening before the server starts emitting events
       setTimeout(() => {
-        if (!analysisStarted) {
-          analysisStarted = true;
+        if (!postRequestSent) {
+          postRequestSent = true;
           console.log('🚀 Socket ready - starting analysis');
           startAnalysis();
         }
@@ -355,6 +355,8 @@ export default function AnalyzePage() {
         setAnalysisComplete(true);
       } else if (data.status === 'processing') {
         console.log('📡 Status indicates processing - analysis in progress');
+        // Mark as started so polling can begin
+        setAnalysisStarted(true);
         // If there's progress info, update it
         if (data.progress !== undefined) {
           setProgress(data.progress);
@@ -367,8 +369,8 @@ export default function AnalyzePage() {
     // Fallback: if socket doesn't connect within 2 seconds, start analysis anyway
     // This ensures analysis runs even if WebSockets are blocked
     const connectionTimeout = setTimeout(() => {
-      if (!analysisStarted) {
-        analysisStarted = true;
+      if (!postRequestSent) {
+        postRequestSent = true;
         console.log('Socket connection timeout - starting analysis with polling fallback');
         startAnalysis();
       }
