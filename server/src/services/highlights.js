@@ -1,5 +1,6 @@
 const PriceOracle = require('./priceOracle');
 const DatabaseQueries = require('../database/queries');
+const HeliusService = require('./helius');
 
 /**
  * Highlights Generator - Creates 6 key trading performance metrics
@@ -15,8 +16,9 @@ const DatabaseQueries = require('../database/queries');
  * v8 - Temporarily used total P&L (reverted)
  * v9 - Use REALIZED P&L only for Win/Loss/WinRate (matches GMGN.ai) + PumpFun accountData fix
  * v10 - Added sanity checks for unreasonably high P&L values (>100k SOL), falls back to FIFO if needed
+ * v11 - Added retry logic for UNKNOWN tokens before generating highlights
  */
-const HIGHLIGHTS_VERSION = 10;
+const HIGHLIGHTS_VERSION = 11;
 
 // Stablecoins and wrapped tokens to exclude from win/loss calculations
 // These are used for swapping, not trading
@@ -51,6 +53,10 @@ class HighlightsGenerator {
    */
   static async generate(positions, transactions, dailyPNL, summary) {
     console.log('Generating highlights...');
+
+    // STEP 1: Retry any UNKNOWN tokens before generating highlights
+    // This gives tokens that weren't indexed initially another chance
+    await this.retryUnknownTokens(positions);
 
     const highlights = [];
 
@@ -131,6 +137,38 @@ class HighlightsGenerator {
         formattedSecondary: `(${this.formatSol(pnlSol)} SOL)`
       }
     };
+  }
+
+  /**
+   * Retry fetching metadata for UNKNOWN tokens before generating highlights
+   * This gives tokens that weren't indexed initially (new tokens, API errors) another chance
+   * Only retries tokens that would appear in highlights (top winners/losers)
+   */
+  static async retryUnknownTokens(positions) {
+    // Find UNKNOWN tokens that could appear in highlights (sorted by P&L magnitude)
+    const unknownPositions = Object.values(positions)
+      .filter(p => p.tokenSymbol === 'UNKNOWN' && !this.isExcludedToken(p))
+      .sort((a, b) => Math.abs(b.realizedPNL) - Math.abs(a.realizedPNL))
+      .slice(0, 10); // Only retry top 10 by P&L magnitude
+
+    if (unknownPositions.length === 0) {
+      return;
+    }
+
+    console.log(`[Highlights] Found ${unknownPositions.length} UNKNOWN tokens in top positions, retrying metadata fetch...`);
+
+    for (const position of unknownPositions) {
+      try {
+        const metadata = await HeliusService.retryUnknownToken(position.tokenMint);
+        if (metadata.symbol && metadata.symbol !== 'UNKNOWN') {
+          // Update the position object with the recovered symbol
+          position.tokenSymbol = metadata.symbol;
+          console.log(`[Highlights] Recovered symbol for ${position.tokenMint}: ${metadata.symbol}`);
+        }
+      } catch (error) {
+        console.error(`[Highlights] Failed to retry token ${position.tokenMint}:`, error.message);
+      }
+    }
   }
 
   /**

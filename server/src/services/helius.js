@@ -702,6 +702,63 @@ class HeliusService {
   }
 
   /**
+   * Retry fetching metadata for UNKNOWN tokens (bypasses cache)
+   * Used after analysis to attempt recovery for tokens that were not indexed initially
+   * @param {string} mint - Token mint address
+   * @returns {Object} - Token metadata (may still be UNKNOWN if API fails)
+   */
+  static async retryUnknownToken(mint) {
+    try {
+      console.log(`[Metadata] Retrying UNKNOWN token: ${mint}`);
+
+      const response = await fetch(HELIUS_RPC_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${process.env.HELIUS_API_KEY}`
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'getAsset',
+          params: { id: mint }
+        })
+      });
+
+      const data = await response.json();
+      const metadata = data.result;
+
+      const symbol = metadata?.content?.metadata?.symbol;
+
+      // Only update if we got a real symbol
+      if (symbol && symbol !== '' && symbol !== 'UNKNOWN') {
+        const info = {
+          mint,
+          symbol,
+          name: metadata?.content?.metadata?.name || 'Unknown Token',
+          decimals: metadata?.token_info?.decimals || 9,
+          supply: metadata?.token_info?.supply || 0
+        };
+
+        // Update cache with the recovered metadata
+        await redis.setex(`token:${mint}:metadata`, 604800, JSON.stringify(info));
+        metadataCache.set(mint, info);
+
+        console.log(`[Metadata] Successfully recovered symbol for ${mint}: ${symbol}`);
+        return info;
+      }
+
+      // Still no metadata, keep as UNKNOWN
+      console.log(`[Metadata] Retry failed for ${mint}: still no symbol in API response`);
+      return metadataCache.get(mint) || { mint, symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 9, supply: 0 };
+
+    } catch (error) {
+      console.error(`[Metadata] Retry failed for ${mint}:`, error.message);
+      return metadataCache.get(mint) || { mint, symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 9, supply: 0 };
+    }
+  }
+
+  /**
    * Batch fetch token metadata for multiple mints (much faster than individual calls)
    * Uses Helius getAssetBatch API to fetch up to 1000 assets at once
    * @param {Array<string>} mints - Array of token mint addresses
@@ -787,12 +844,14 @@ class HeliusService {
           }
         }
 
-        // For any mints not returned by the API, set UNKNOWN
+        // For any mints not returned by the API, set UNKNOWN with short TTL
+        // Short TTL (1 hour) allows retry if token gets indexed later
         const returnedMints = new Set(assets.map(a => a?.id).filter(Boolean));
         for (const mint of batch) {
           if (!returnedMints.has(mint) && !metadataCache.has(mint)) {
+            console.warn(`[Metadata] Token not found in DAS API, caching as UNKNOWN: ${mint}`);
             const unknownInfo = { mint, symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 9, supply: 0 };
-            redisPipeline.setEx(`token:${mint}:metadata`, 86400, JSON.stringify(unknownInfo)); // 1 day cache for unknown
+            redisPipeline.setEx(`token:${mint}:metadata`, 3600, JSON.stringify(unknownInfo)); // 1 hour cache for unknown (allows retry)
             metadataCache.set(mint, unknownInfo);
           }
         }
