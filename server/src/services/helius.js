@@ -676,11 +676,20 @@ class HeliusService {
   static async batchFetchTokenMetadata(mints, progressCallback = () => {}) {
     if (!mints || mints.length === 0) return;
 
-    // Filter out mints we already have cached
+    // OPTIMIZATION: Batch Redis lookups instead of sequential awaits
+    // Filter out mints already in memory cache first
+    const needsRedisCheck = mints.filter(mint => !metadataCache.has(mint));
+
+    // Batch fetch from Redis using pipeline (much faster than sequential gets)
     const uncachedMints = [];
-    for (const mint of mints) {
-      if (!metadataCache.has(mint)) {
-        const cached = await redis.get(`token:${mint}:metadata`);
+    if (needsRedisCheck.length > 0) {
+      // Use mget for batch Redis lookup - single round trip instead of N
+      const redisKeys = needsRedisCheck.map(mint => `token:${mint}:metadata`);
+      const redisResults = await redis.redis.mGet(redisKeys);
+
+      for (let i = 0; i < needsRedisCheck.length; i++) {
+        const mint = needsRedisCheck[i];
+        const cached = redisResults[i];
         if (cached) {
           try {
             metadataCache.set(mint, JSON.parse(cached));
@@ -723,6 +732,10 @@ class HeliusService {
         const data = await response.json();
         const assets = data.result || [];
 
+        // OPTIMIZATION: Batch Redis writes using pipeline
+        const redisPipeline = redis.redis.multi();
+        const toCache = [];
+
         for (const asset of assets) {
           if (asset && asset.id) {
             const info = {
@@ -733,9 +746,10 @@ class HeliusService {
               supply: asset.token_info?.supply || 0
             };
 
-            // Cache in both Redis and memory
-            await redis.setex(`token:${asset.id}:metadata`, 604800, JSON.stringify(info));
+            // Queue Redis write and update memory cache
+            redisPipeline.setEx(`token:${asset.id}:metadata`, 604800, JSON.stringify(info));
             metadataCache.set(asset.id, info);
+            toCache.push({ mint: asset.id, info });
           }
         }
 
@@ -744,10 +758,13 @@ class HeliusService {
         for (const mint of batch) {
           if (!returnedMints.has(mint) && !metadataCache.has(mint)) {
             const unknownInfo = { mint, symbol: 'UNKNOWN', name: 'Unknown Token', decimals: 9, supply: 0 };
-            await redis.setex(`token:${mint}:metadata`, 86400, JSON.stringify(unknownInfo)); // 1 day cache for unknown
+            redisPipeline.setEx(`token:${mint}:metadata`, 86400, JSON.stringify(unknownInfo)); // 1 day cache for unknown
             metadataCache.set(mint, unknownInfo);
           }
         }
+
+        // Execute all Redis writes in single round trip
+        await redisPipeline.exec();
       } catch (error) {
         console.error(`Batch metadata fetch error:`, error.message);
         // Set UNKNOWN for failed batch

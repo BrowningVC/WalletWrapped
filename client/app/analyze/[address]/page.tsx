@@ -175,23 +175,23 @@ export default function AnalyzePage() {
 
   // Simulated progress animation during initial connection phase
   // Provides immediate visual feedback while waiting for server response
-  // Progress is faster at start (0-2%) to feel responsive, then slows down
+  // Progress ramps up quickly to feel responsive before real server data arrives
   useEffect(() => {
     // Only run simulation when real progress is 0
     if (progress > 0 || error) return;
 
     const messages = [
-      { progress: 0.3, message: 'Connecting to server...', delay: 0 },
-      { progress: 0.6, message: 'Establishing connection...', delay: 300 },
-      { progress: 1.0, message: 'Preparing analysis...', delay: 600 },
-      { progress: 1.3, message: 'Connecting to Solana...', delay: 1000 },
-      { progress: 1.6, message: 'Initializing scanner...', delay: 1500 },
-      { progress: 2.0, message: 'Scanning wallet...', delay: 2000 },
-      { progress: 2.3, message: 'Starting fetch...', delay: 3000 },
-      { progress: 2.6, message: 'Fetching history...', delay: 4000 },
-      { progress: 3.0, message: 'Processing...', delay: 5500 },
-      { progress: 3.3, message: 'Still loading...', delay: 7000 },
-      { progress: 3.5, message: 'Almost there...', delay: 9000 },
+      { progress: 1, message: 'Connecting to server...', delay: 0 },
+      { progress: 3, message: 'Establishing connection...', delay: 150 },
+      { progress: 5, message: 'Preparing analysis...', delay: 300 },
+      { progress: 7, message: 'Connecting to Solana...', delay: 500 },
+      { progress: 9, message: 'Initializing scanner...', delay: 700 },
+      { progress: 11, message: 'Scanning wallet...', delay: 1000 },
+      { progress: 13, message: 'Starting fetch...', delay: 1500 },
+      { progress: 15, message: 'Fetching history...', delay: 2500 },
+      { progress: 16, message: 'Processing...', delay: 4000 },
+      { progress: 17, message: 'Still loading...', delay: 6000 },
+      { progress: 18, message: 'Almost there...', delay: 9000 },
     ];
 
     const timers: NodeJS.Timeout[] = [];

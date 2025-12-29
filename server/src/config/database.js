@@ -112,6 +112,43 @@ async function batchInsert(table, columns, values, batchSize = 500) {
   return results;
 }
 
+/**
+ * Batch upsert helper - inserts or updates multiple rows in a single query
+ * Uses UNNEST for efficient bulk operations (much faster than individual upserts)
+ * @param {string} table - Table name
+ * @param {string[]} columns - Column names
+ * @param {any[][]} values - Array of value arrays
+ * @param {string[]} conflictColumns - Columns for ON CONFLICT
+ * @param {string[]} updateColumns - Columns to update on conflict (if omitted, updates all non-conflict columns)
+ * @param {string[]} columnTypes - PostgreSQL types for UNNEST (e.g., 'text', 'numeric', 'jsonb')
+ */
+async function batchUpsert(table, columns, values, conflictColumns, updateColumns = null, columnTypes = null) {
+  if (!values || values.length === 0) return { rowCount: 0 };
+
+  // Default: update all columns except conflict columns
+  const colsToUpdate = updateColumns || columns.filter(c => !conflictColumns.includes(c));
+
+  // Build UNNEST query for bulk upsert
+  // This is much faster than individual INSERT...ON CONFLICT for large batches
+  const types = columnTypes || columns.map(() => 'text');
+  const unnestParts = columns.map((col, i) => `UNNEST($${i + 1}::${types[i]}[]) AS ${col}`);
+
+  const updateSet = colsToUpdate.map(col => `${col} = EXCLUDED.${col}`).join(', ');
+
+  const queryText = `
+    INSERT INTO ${table} (${columns.join(', ')})
+    SELECT ${columns.join(', ')} FROM (SELECT ${unnestParts.join(', ')}) AS data
+    ON CONFLICT (${conflictColumns.join(', ')}) DO UPDATE SET
+      ${updateSet},
+      updated_at = CURRENT_TIMESTAMP
+  `;
+
+  // Transpose values: from array of rows to array of columns
+  const columnArrays = columns.map((_, colIdx) => values.map(row => row[colIdx]));
+
+  return pool.query(queryText, columnArrays);
+}
+
 // Clean up on application shutdown
 process.on('SIGINT', async () => {
   console.log('Closing database pool...');
@@ -123,5 +160,6 @@ module.exports = {
   pool,
   query,
   transaction,
-  batchInsert
+  batchInsert,
+  batchUpsert
 };

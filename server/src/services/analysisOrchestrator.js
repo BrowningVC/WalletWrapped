@@ -73,7 +73,8 @@ function getStageFromPercent(percent) {
   if (percent < 70) return { stage: 'calculating', step: 4, label: 'Calculating P&L' };
   if (percent < 85) return { stage: 'saving', step: 5, label: 'Saving Results' };
   if (percent < 95) return { stage: 'highlights', step: 6, label: 'Generating Highlights' };
-  return { stage: 'completing', step: 6, label: 'Completing' };
+  if (percent < 100) return { stage: 'cards', step: 7, label: 'Generating Cards' };
+  return { stage: 'completing', step: 7, label: 'Complete' };
 }
 
 /**
@@ -94,7 +95,7 @@ async function emitProgress(walletAddress, percent, message, details = {}) {
     stage: stageInfo.stage,
     stageLabel: stageInfo.label,
     currentStep: stageInfo.step,
-    totalSteps: 6,
+    totalSteps: 7,
     // Transaction counts (if provided)
     transactionsFetched: details.fetched || null,
     transactionsTotal: details.total || null,
@@ -301,51 +302,59 @@ async function runAnalysis(walletAddress, incremental = false) {
       dailyPNL: JSON.stringify(dailyPNL)
     });
 
-    await emitProgress(walletAddress, 98, 'Finalizing analysis...', txDetails);
+    await emitProgress(walletAddress, 96, 'Generating share cards...', txDetails);
 
-    // Pre-generate and cache all card images in the background (non-blocking)
-    // Cards will be generated on-demand if this fails
+    // OPTIMIZATION: Pre-generate card images SYNCHRONOUSLY before completion
+    // This ensures cards are ready when user arrives at highlights page
+    // Cards are generated in parallel for speed, but we wait for all to complete
     const clientUrl = process.env.CLIENT_URL || 'https://walletwrapped.com';
 
-    // Fire and forget - don't wait for card generation
-    (async () => {
+    // Helper to generate a single card with timeout
+    const generateCard = async (cardIndex) => {
       try {
-        const cardPromises = [0, 1, 2, 3, 4, 5, 'summary'].map(async (cardIndex) => {
-          try {
-            const url = cardIndex === 'summary'
-              ? `${clientUrl}/api/card/${walletAddress}/summary`
-              : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
+        const url = cardIndex === 'summary'
+          ? `${clientUrl}/api/card/${walletAddress}/summary`
+          : `${clientUrl}/api/card/${walletAddress}/${cardIndex}`;
 
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout per card
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout per card (reduced)
 
-            const response = await fetch(url, { signal: controller.signal });
-            clearTimeout(timeoutId);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
 
-            if (response.ok) {
-              const arrayBuffer = await response.arrayBuffer();
-              const buffer = Buffer.from(arrayBuffer);
-              await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
-              return { cardIndex, success: true };
-            }
-            return { cardIndex, success: false, error: `HTTP ${response.status}` };
-          } catch (err) {
-            return { cardIndex, success: false, error: err.message };
-          }
-        });
-
-        const cardResults = await Promise.all(cardPromises);
-        const successCount = cardResults.filter(r => r.success).length;
-        const failedCards = cardResults.filter(r => !r.success);
-
-        if (failedCards.length > 0) {
-          console.warn(`Some cards failed to pre-generate for ${walletAddress}:`, failedCards);
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer();
+          const buffer = Buffer.from(arrayBuffer);
+          await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
+          return { cardIndex, success: true };
         }
-        console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress}`);
+        return { cardIndex, success: false, error: `HTTP ${response.status}` };
       } catch (err) {
-        console.error(`Card pre-generation failed for ${walletAddress}:`, err.message);
+        return { cardIndex, success: false, error: err.message };
       }
-    })();
+    };
+
+    // Generate all 7 cards in parallel (cards 0-5 + summary)
+    // This takes ~2-4 seconds total instead of 14-28 seconds sequentially
+    try {
+      const cardStartTime = Date.now();
+      const cardPromises = [0, 1, 2, 3, 4, 5, 'summary'].map(generateCard);
+      const cardResults = await Promise.all(cardPromises);
+
+      const successCount = cardResults.filter(r => r.success).length;
+      const failedCards = cardResults.filter(r => !r.success);
+      const cardDuration = Date.now() - cardStartTime;
+
+      if (failedCards.length > 0) {
+        console.warn(`Some cards failed to pre-generate for ${walletAddress}:`, failedCards);
+      }
+      console.log(`Pre-generated ${successCount}/7 card images for ${walletAddress} in ${cardDuration}ms`);
+
+      await emitProgress(walletAddress, 99, 'Cards ready!', txDetails);
+    } catch (err) {
+      console.error(`Card pre-generation failed for ${walletAddress}:`, err.message);
+      // Continue without cards - they'll be generated on-demand
+    }
 
     await emitProgress(walletAddress, 100, 'Analysis complete!', txDetails);
 

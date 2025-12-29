@@ -29,9 +29,16 @@ class PNLCalculator {
     };
 
     // Sort transactions by time (oldest first) for FIFO
-    const sortedTxs = transactions
-      .filter(tx => tx && tx.signature)
-      .sort((a, b) => new Date(a.blockTime) - new Date(b.blockTime));
+    // OPTIMIZATION: Pre-compute timestamps once instead of creating Date objects in sort comparator
+    const filteredTxs = transactions.filter(tx => tx && tx.signature);
+
+    // Pre-compute timestamps for faster sorting (O(n log n) with simple comparisons)
+    const txsWithTimestamp = filteredTxs.map(tx => ({
+      tx,
+      timestamp: new Date(tx.blockTime).getTime()
+    }));
+    txsWithTimestamp.sort((a, b) => a.timestamp - b.timestamp);
+    const sortedTxs = txsWithTimestamp.map(item => item.tx);
 
     const totalTxs = sortedTxs.length;
     console.log(`Calculating P&L for ${totalTxs} transactions`);
@@ -586,34 +593,40 @@ class PNLCalculator {
 
   /**
    * Detect MEV/sandwich attacks
+   * OPTIMIZATION: Pre-compute timestamps once and use efficient comparison
    */
   static detectMEV(transactions) {
+    if (transactions.length < 3) return [];
+
     const bundles = [];
 
-    for (let i = 0; i < transactions.length - 2; i++) {
-      const t1 = transactions[i];
-      const t2 = transactions[i + 1];
-      const t3 = transactions[i + 2];
+    // OPTIMIZATION: Pre-compute timestamps once instead of calling .getTime() repeatedly
+    const txsWithTs = transactions.map(tx => ({
+      tx,
+      timestamp: tx.blockTime instanceof Date ? tx.blockTime.getTime() : new Date(tx.blockTime).getTime()
+    }));
 
-      // Same token, same block, buy-sell-buy or sell-buy-sell pattern
-      if (
-        t1.tokenMint === t2.tokenMint &&
-        t2.tokenMint === t3.tokenMint &&
-        t1.blockTime.getTime() === t2.blockTime.getTime() &&
-        t2.blockTime.getTime() === t3.blockTime.getTime()
-      ) {
-        const pattern = `${t1.type}-${t2.type}-${t3.type}`;
+    for (let i = 0; i < txsWithTs.length - 2; i++) {
+      const { tx: t1, timestamp: ts1 } = txsWithTs[i];
+      const { tx: t2, timestamp: ts2 } = txsWithTs[i + 1];
+      const { tx: t3, timestamp: ts3 } = txsWithTs[i + 2];
 
-        if (
-          pattern === 'BUY-SELL-BUY' ||
-          pattern === 'SELL-BUY-SELL'
-        ) {
-          bundles.push({
-            transactions: [t1.signature, t2.signature, t3.signature],
-            type: 'POTENTIAL_MEV',
-            pattern
-          });
-        }
+      // Early exit: different timestamps means not same block
+      if (ts1 !== ts2 || ts2 !== ts3) continue;
+
+      // Early exit: different tokens
+      if (t1.tokenMint !== t2.tokenMint || t2.tokenMint !== t3.tokenMint) continue;
+
+      // Check for sandwich pattern
+      const isBuySellBuy = t1.type === 'BUY' && t2.type === 'SELL' && t3.type === 'BUY';
+      const isSellBuySell = t1.type === 'SELL' && t2.type === 'BUY' && t3.type === 'SELL';
+
+      if (isBuySellBuy || isSellBuySell) {
+        bundles.push({
+          transactions: [t1.signature, t2.signature, t3.signature],
+          type: 'POTENTIAL_MEV',
+          pattern: isBuySellBuy ? 'BUY-SELL-BUY' : 'SELL-BUY-SELL'
+        });
       }
     }
 
