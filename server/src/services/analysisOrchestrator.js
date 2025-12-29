@@ -330,9 +330,17 @@ async function runAnalysis(walletAddress, incremental = false) {
         if (response.ok) {
           const arrayBuffer = await response.arrayBuffer();
           const buffer = Buffer.from(arrayBuffer);
+          console.log(`[Card Gen] Card ${cardIndex} received ${buffer.length} bytes, caching to Redis...`);
           await CacheManager.cacheCardImage(walletAddress, cardIndex, buffer);
+
+          // Verify cache write by reading back
+          const cached = await CacheManager.getCardImage(walletAddress, cardIndex);
           const duration = Date.now() - startTime;
-          console.log(`[Card Gen] Card ${cardIndex} cached successfully (${buffer.length} bytes, ${duration}ms)`);
+          if (cached && cached.length === buffer.length) {
+            console.log(`[Card Gen] Card ${cardIndex} verified in cache (${cached.length} bytes, ${duration}ms)`);
+          } else {
+            console.error(`[Card Gen] Card ${cardIndex} CACHE VERIFY FAILED! Expected ${buffer.length}, got ${cached ? cached.length : 'null'}`);
+          }
           return { cardIndex, success: true, duration };
         }
         const duration = Date.now() - startTime;

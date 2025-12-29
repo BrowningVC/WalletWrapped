@@ -451,6 +451,8 @@ router.post('/wallet/:address/refresh', validateCSRFToken, async (req, res) => {
 router.get('/wallet/:address/card/:index', async (req, res) => {
   try {
     const { address, index } = req.params;
+    const requestTime = Date.now();
+    console.log(`[Card Cache] Request received for ${address.slice(0, 8)}... card ${index}`);
 
     if (!isValidSolanaAddress(address)) {
       return res.status(400).json({ error: 'Invalid wallet address' });
@@ -464,13 +466,14 @@ router.get('/wallet/:address/card/:index', async (req, res) => {
 
     // Get cached image
     const imageBuffer = await CacheManager.getCardImage(address, index);
+    const lookupDuration = Date.now() - requestTime;
 
     if (!imageBuffer) {
-      console.log(`[Card Cache] MISS for ${address.slice(0, 8)}... card ${index}`);
+      console.log(`[Card Cache] MISS for ${address.slice(0, 8)}... card ${index} (lookup: ${lookupDuration}ms)`);
       return res.status(404).json({ error: 'Card image not cached' });
     }
 
-    console.log(`[Card Cache] HIT for ${address.slice(0, 8)}... card ${index} (${imageBuffer.length} bytes)`);
+    console.log(`[Card Cache] HIT for ${address.slice(0, 8)}... card ${index} (${imageBuffer.length} bytes, lookup: ${lookupDuration}ms)`);
 
     // Return PNG image
     res.set({
