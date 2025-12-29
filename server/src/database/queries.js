@@ -472,6 +472,7 @@ class DatabaseQueries {
   /**
    * Mark stale processing analyses as failed
    * Any analysis stuck in 'processing' for more than 10 minutes is considered failed
+   * Also cleans up orphaned Redis locks
    */
   static async cleanupStaleProcessing() {
     const result = await query(
@@ -485,6 +486,17 @@ class DatabaseQueries {
     );
     if (result.rowCount > 0) {
       console.log(`Marked ${result.rowCount} stale analyses as failed:`, result.rows.map(r => r.wallet_address));
+
+      // Also release Redis locks for these stale analyses
+      try {
+        const RateLimiter = require('../utils/rateLimiter');
+        for (const row of result.rows) {
+          await RateLimiter.releaseAnalysisLock(row.wallet_address);
+        }
+        console.log('Released Redis locks for stale analyses');
+      } catch (lockError) {
+        console.error('Error releasing locks for stale analyses:', lockError.message);
+      }
     }
     return result.rowCount;
   }

@@ -161,4 +161,43 @@ router.post('/reset', async (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/monitor/locks/:walletAddress
+ * Clear stale analysis lock for a wallet (admin only)
+ */
+router.delete('/locks/:walletAddress', async (req, res) => {
+  try {
+    const { walletAddress } = req.params;
+    await RateLimiter.releaseAnalysisLock(walletAddress);
+    res.json({ success: true, message: `Lock released for ${walletAddress}` });
+  } catch (error) {
+    console.error('Error releasing lock:', error);
+    res.status(500).json({ error: 'Failed to release lock' });
+  }
+});
+
+/**
+ * DELETE /api/monitor/locks
+ * Clear all analysis locks (admin only - use with caution)
+ */
+router.delete('/locks', async (req, res) => {
+  try {
+    const lockKeys = await RateLimiter.scanKeys('lock:analysis:*');
+    const redis = require('../config/redis');
+
+    if (lockKeys.length > 0) {
+      await redis.redis.del(...lockKeys);
+    }
+
+    res.json({
+      success: true,
+      message: `Cleared ${lockKeys.length} analysis locks`,
+      cleared: lockKeys.length
+    });
+  } catch (error) {
+    console.error('Error clearing locks:', error);
+    res.status(500).json({ error: 'Failed to clear locks' });
+  }
+});
+
 module.exports = router;

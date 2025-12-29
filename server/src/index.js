@@ -306,7 +306,18 @@ async function initializeServices() {
     AnalysisOrchestrator.setSocketIO(io); // Connect orchestrator to Socket.io
     console.log('Socket.io initialized\n');
 
-    console.log('========================================');
+    // Clear orphaned analysis locks on startup (from previous crashes)
+    console.log('Clearing orphaned analysis locks...');
+    const RateLimiter = require('./utils/rateLimiter');
+    const lockKeys = await RateLimiter.scanKeys('lock:analysis:*');
+    if (lockKeys.length > 0) {
+      await redis.redis.del(...lockKeys);
+      console.log(`Cleared ${lockKeys.length} orphaned analysis locks`);
+    } else {
+      console.log('No orphaned locks found');
+    }
+
+    console.log('\n========================================');
     console.log('All services initialized successfully');
     console.log('Ready for concurrent wallet analyses!');
     console.log('========================================\n');
