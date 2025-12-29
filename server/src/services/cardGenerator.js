@@ -6,7 +6,8 @@ const path = require('path');
 // v2: Added ticker badge with calendar icon
 // v3: Fixed highlight_type vs type property mismatch (was breaking ticker badge on production)
 // v4: Added win rate badge with trophy icon
-const CARD_GENERATOR_VERSION = 4;
+// v5: Improved summary card design with header logo, footer branding, proper layout
+const CARD_GENERATOR_VERSION = 5;
 
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
@@ -783,10 +784,20 @@ async function generateSummaryCard(highlights, walletAddress) {
         flexDirection: 'column',
         background: 'linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #0a0a1a 100%)',
         fontFamily: 'Inter',
-        padding: '48px',
+        padding: '40px',
+        position: 'relative',
+        overflow: 'hidden',
       },
       children: [
-        // Header
+        // Background gradient orbs
+        { type: 'div', props: { style: { position: 'absolute', top: '-100px', right: '-100px', width: '300px', height: '300px', background: 'radial-gradient(circle, #ffd70015 0%, transparent 70%)', borderRadius: '50%', display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', bottom: '-150px', left: '-100px', width: '350px', height: '350px', background: 'radial-gradient(circle, #a855f715 0%, transparent 70%)', borderRadius: '50%', display: 'flex' } } },
+        // Sparkle particles
+        { type: 'div', props: { style: { position: 'absolute', top: '60px', right: '80px', width: '8px', height: '8px', background: '#ffd700', borderRadius: '50%', opacity: 0.7, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', top: '120px', right: '140px', width: '6px', height: '6px', background: '#ff6b9d', borderRadius: '50%', opacity: 0.5, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', bottom: '180px', left: '60px', width: '7px', height: '7px', background: '#9d4edd', borderRadius: '50%', opacity: 0.6, display: 'flex' } } },
+        { type: 'div', props: { style: { position: 'absolute', bottom: '100px', right: '100px', width: '5px', height: '5px', background: '#10b981', borderRadius: '50%', opacity: 0.5, display: 'flex' } } },
+        // Header with logo and title
         {
           type: 'div',
           props: {
@@ -794,120 +805,249 @@ async function generateSummaryCard(highlights, walletAddress) {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
-              marginBottom: '40px',
+              marginBottom: '32px',
+              position: 'relative',
             },
             children: [
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: '48px',
-                    fontWeight: '700',
-                    color: '#ffffff',
-                  },
-                  children: '2025 Wrapped',
-                },
-              },
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: '32px',
-                    fontWeight: '900',
-                    color: '#a855f7',
-                  },
-                  children: 'SUMMARY',
-                },
-              },
-            ],
-          },
-        },
-        // Summary items
-        ...summaryItems.map(item => ({
-          type: 'div',
-          props: {
-            style: {
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              padding: '24px 32px',
-              marginBottom: '16px',
-              background: 'rgba(255,255,255,0.05)',
-              borderRadius: '16px',
-              border: '2px solid rgba(139, 92, 246, 0.3)',
-            },
-            children: [
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: '28px',
-                    color: '#ffffff',
-                    fontWeight: '600',
-                  },
-                  children: item.title,
-                },
-              },
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: '32px',
-                    fontWeight: '700',
-                    color: item.isProfit === true ? '#22c55e' :
-                           item.isProfit === false ? '#ef4444' : '#a855f7',
-                  },
-                  children: item.value,
-                },
-              },
-            ],
-          },
-        })),
-        // Footer
-        {
-          type: 'div',
-          props: {
-            style: {
-              marginTop: 'auto',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              paddingTop: '24px',
-              borderTop: '2px solid rgba(139, 92, 246, 0.25)',
-            },
-            children: [
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: '20px',
-                    color: '#9ca3af',
-                    fontFamily: 'monospace',
-                  },
-                  children: `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`,
-                },
-              },
+              // Left side: Logo + Title
               {
                 type: 'div',
                 props: {
                   style: {
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '8px',
+                    gap: '16px',
+                  },
+                  children: [
+                    // Calendar logo icon
+                    {
+                      type: 'svg',
+                      props: {
+                        width: 56,
+                        height: 56,
+                        viewBox: '0 0 64 64',
+                        style: { display: 'flex' },
+                        children: [
+                          { type: 'rect', props: { x: 10, y: 14, width: 44, height: 40, rx: 4, fill: '#1a1a2e', stroke: '#ffd700', strokeWidth: 2 } },
+                          { type: 'rect', props: { x: 10, y: 14, width: 44, height: 10, rx: 4, fill: '#2a2a42' } },
+                          { type: 'rect', props: { x: 10, y: 20, width: 44, height: 4, fill: '#2a2a42' } },
+                          { type: 'rect', props: { x: 18, y: 10, width: 3, height: 8, rx: 1.5, fill: '#ffd700' } },
+                          { type: 'rect', props: { x: 31, y: 10, width: 3, height: 8, rx: 1.5, fill: '#ff6b9d' } },
+                          { type: 'rect', props: { x: 44, y: 10, width: 3, height: 8, rx: 1.5, fill: '#9d4edd' } },
+                          { type: 'circle', props: { cx: 17, cy: 31, r: 2.5, fill: '#10b981' } },
+                          { type: 'circle', props: { cx: 23, cy: 31, r: 2.5, fill: '#ffd700' } },
+                          { type: 'circle', props: { cx: 35, cy: 37, r: 2.5, fill: '#ff6b9d' } },
+                          { type: 'circle', props: { cx: 41, cy: 37, r: 2.5, fill: '#10b981' } },
+                          { type: 'circle', props: { cx: 29, cy: 43, r: 2.5, fill: '#9d4edd' } },
+                          { type: 'circle', props: { cx: 47, cy: 43, r: 2.5, fill: '#ffd700' } },
+                          { type: 'path', props: { d: 'M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32', stroke: '#10b981', strokeWidth: 2.5, strokeLinecap: 'round', fill: 'none', opacity: 0.7 } },
+                        ],
+                      },
+                    },
+                    // Title text
+                    {
+                      type: 'div',
+                      props: {
+                        style: {
+                          display: 'flex',
+                          flexDirection: 'column',
+                        },
+                        children: [
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '18px',
+                                fontWeight: '600',
+                                color: '#ffd700',
+                                letterSpacing: '0.1em',
+                              },
+                              children: '2025 WRAPPED',
+                            },
+                          },
+                          {
+                            type: 'div',
+                            props: {
+                              style: {
+                                fontSize: '36px',
+                                fontWeight: '800',
+                                color: '#ffffff',
+                                lineHeight: 1.1,
+                              },
+                              children: 'Your Year',
+                            },
+                          },
+                        ],
+                      },
+                    },
+                  ],
+                },
+              },
+              // Right side: SUMMARY badge
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'flex-end',
+                    padding: '12px 20px',
+                    background: 'linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.1) 100%)',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(168, 85, 247, 0.4)',
                   },
                   children: [
                     {
-                      type: 'span',
+                      type: 'div',
                       props: {
-                        style: { fontSize: '18px', color: '#9ca3af' },
-                        children: 'powered by',
+                        style: {
+                          fontSize: '32px',
+                          fontWeight: '900',
+                          color: '#a855f7',
+                          letterSpacing: '-0.02em',
+                        },
+                        children: 'SUMMARY',
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          },
+        },
+        // Summary items container
+        {
+          type: 'div',
+          props: {
+            style: {
+              display: 'flex',
+              flexDirection: 'column',
+              flex: 1,
+              justifyContent: 'space-between',
+              gap: '12px',
+            },
+            children: summaryItems.map(item => ({
+              type: 'div',
+              props: {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'row',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  width: '100%',
+                  padding: '20px 28px',
+                  background: 'rgba(255,255,255,0.03)',
+                  borderRadius: '16px',
+                  border: '1px solid rgba(139, 92, 246, 0.25)',
+                },
+                children: [
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontSize: '24px',
+                        color: '#e5e5e5',
+                        fontWeight: '600',
+                        flex: 1,
+                      },
+                      children: item.title,
+                    },
+                  },
+                  {
+                    type: 'div',
+                    props: {
+                      style: {
+                        fontSize: '28px',
+                        fontWeight: '700',
+                        color: item.isProfit === true ? '#22c55e' :
+                               item.isProfit === false ? '#ef4444' : '#a855f7',
+                        textAlign: 'right',
+                      },
+                      children: item.value,
+                    },
+                  },
+                ],
+              },
+            })),
+          },
+        },
+        // Footer
+        {
+          type: 'div',
+          props: {
+            style: {
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              paddingTop: '24px',
+              marginTop: '16px',
+              borderTop: '1px solid rgba(139, 92, 246, 0.2)',
+            },
+            children: [
+              // Left: Wallet address
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    fontSize: '16px',
+                    color: '#6b7280',
+                    fontFamily: 'monospace',
+                  },
+                  children: `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`,
+                },
+              },
+              // Right: Powered by with sparkle
+              {
+                type: 'div',
+                props: {
+                  style: {
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                  },
+                  children: [
+                    // Sparkle/firework icon
+                    {
+                      type: 'svg',
+                      props: {
+                        width: 20,
+                        height: 20,
+                        viewBox: '0 0 24 24',
+                        fill: 'none',
+                        style: { display: 'flex' },
+                        children: [
+                          { type: 'path', props: { d: 'M12 3L13.5 8.5L19 10L13.5 11.5L12 17L10.5 11.5L5 10L10.5 8.5L12 3Z', fill: '#ffd700' } },
+                          { type: 'path', props: { d: 'M19 15L20 18L23 19L20 20L19 23L18 20L15 19L18 18L19 15Z', fill: '#ff6b9d', opacity: 0.8 } },
+                          { type: 'path', props: { d: 'M5 15L6 17L8 18L6 19L5 21L4 19L2 18L4 17L5 15Z', fill: '#9d4edd', opacity: 0.8 } },
+                        ],
                       },
                     },
                     {
                       type: 'span',
                       props: {
-                        style: { fontSize: '22px', fontWeight: 'bold', color: '#ffd700' },
+                        style: { fontSize: '16px', color: '#6b7280' },
+                        children: 'Powered by',
+                      },
+                    },
+                    {
+                      type: 'span',
+                      props: {
+                        style: { fontSize: '20px', fontWeight: 'bold', color: '#ffd700' },
                         children: '$WRAPPED',
+                      },
+                    },
+                    {
+                      type: 'span',
+                      props: {
+                        style: { fontSize: '16px', color: '#6b7280' },
+                        children: '•',
+                      },
+                    },
+                    {
+                      type: 'span',
+                      props: {
+                        style: { fontSize: '16px', color: '#9ca3af' },
+                        children: 'walletwrapped.io',
                       },
                     },
                   ],
