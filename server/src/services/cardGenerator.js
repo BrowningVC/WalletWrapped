@@ -7,7 +7,8 @@ const path = require('path');
 // v3: Fixed highlight_type vs type property mismatch (was breaking ticker badge on production)
 // v4: Added win rate badge with trophy icon
 // v5: Improved summary card design with header logo, footer branding, proper layout
-const CARD_GENERATOR_VERSION = 5;
+// v6: Summary card - larger boxes, subtitles with ticker/date/wins, removed wallet address
+const CARD_GENERATOR_VERSION = 6;
 
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
@@ -767,12 +768,35 @@ async function generateSummaryCard(highlights, walletAddress) {
     throw new Error('Fonts not available - cannot generate summary card');
   }
 
-  // Build summary items
-  const summaryItems = highlights.map(h => ({
-    title: h.title || '',
-    value: h.metadata?.formattedPrimary || h.value_primary || '',
-    isProfit: h.metadata?.isProfit,
-  }));
+  // Build summary items with extra metadata for each type
+  const summaryItems = highlights.map(h => {
+    const type = h.highlight_type || h.type;
+    const item = {
+      title: h.title || '',
+      value: h.metadata?.formattedPrimary || h.value_primary || '',
+      isProfit: h.metadata?.isProfit,
+      subtitle: null, // Extra info like ticker, date, wins
+    };
+
+    // Add relevant subtitle based on highlight type
+    if (type === 'biggest_win' || type === 'biggest_loss' || type === 'longest_hold') {
+      if (h.metadata?.tokenSymbol) {
+        item.subtitle = `$${h.metadata.tokenSymbol}`;
+      }
+    } else if (type === 'win_rate') {
+      if (h.metadata?.formattedSecondary) {
+        item.subtitle = h.metadata.formattedSecondary; // e.g., "12/58 wins"
+      }
+    } else if (type === 'best_profit_day' || type === 'best_day') {
+      if (h.metadata?.date) {
+        // Format date nicely
+        const date = new Date(h.metadata.date);
+        item.subtitle = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+    }
+
+    return item;
+  });
 
   const jsx = {
     type: 'div',
@@ -915,7 +939,7 @@ async function generateSummaryCard(highlights, walletAddress) {
             ],
           },
         },
-        // Summary items container
+        // Summary items container - larger boxes with subtitles
         {
           type: 'div',
           props: {
@@ -924,7 +948,7 @@ async function generateSummaryCard(highlights, walletAddress) {
               flexDirection: 'column',
               flex: 1,
               justifyContent: 'space-between',
-              gap: '12px',
+              gap: '16px',
             },
             children: summaryItems.map(item => ({
               type: 'div',
@@ -935,30 +959,55 @@ async function generateSummaryCard(highlights, walletAddress) {
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   width: '100%',
-                  padding: '20px 28px',
-                  background: 'rgba(255,255,255,0.03)',
-                  borderRadius: '16px',
-                  border: '1px solid rgba(139, 92, 246, 0.25)',
+                  padding: '24px 32px',
+                  background: 'rgba(255,255,255,0.04)',
+                  borderRadius: '20px',
+                  border: '1px solid rgba(139, 92, 246, 0.3)',
                 },
                 children: [
+                  // Left side: Title + subtitle
                   {
                     type: 'div',
                     props: {
                       style: {
-                        fontSize: '24px',
-                        color: '#e5e5e5',
-                        fontWeight: '600',
-                        flex: 1,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
                       },
-                      children: item.title,
+                      children: [
+                        {
+                          type: 'div',
+                          props: {
+                            style: {
+                              fontSize: '28px',
+                              color: '#ffffff',
+                              fontWeight: '700',
+                            },
+                            children: item.title,
+                          },
+                        },
+                        // Subtitle (ticker, date, or wins)
+                        item.subtitle ? {
+                          type: 'div',
+                          props: {
+                            style: {
+                              fontSize: '18px',
+                              color: '#9ca3af',
+                              fontWeight: '500',
+                            },
+                            children: item.subtitle,
+                          },
+                        } : null,
+                      ].filter(Boolean),
                     },
                   },
+                  // Right side: Value (larger)
                   {
                     type: 'div',
                     props: {
                       style: {
-                        fontSize: '28px',
-                        fontWeight: '700',
+                        fontSize: '36px',
+                        fontWeight: '800',
                         color: item.isProfit === true ? '#22c55e' :
                                item.isProfit === false ? '#ef4444' : '#a855f7',
                         textAlign: 'right',
@@ -971,32 +1020,20 @@ async function generateSummaryCard(highlights, walletAddress) {
             })),
           },
         },
-        // Footer
+        // Footer - centered, no wallet address
         {
           type: 'div',
           props: {
             style: {
               display: 'flex',
-              justifyContent: 'space-between',
+              justifyContent: 'center',
               alignItems: 'center',
               paddingTop: '24px',
               marginTop: '16px',
               borderTop: '1px solid rgba(139, 92, 246, 0.2)',
             },
             children: [
-              // Left: Wallet address
-              {
-                type: 'div',
-                props: {
-                  style: {
-                    fontSize: '16px',
-                    color: '#6b7280',
-                    fontFamily: 'monospace',
-                  },
-                  children: `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`,
-                },
-              },
-              // Right: Powered by with sparkle
+              // Centered: Powered by with sparkle
               {
                 type: 'div',
                 props: {
@@ -1010,8 +1047,8 @@ async function generateSummaryCard(highlights, walletAddress) {
                     {
                       type: 'svg',
                       props: {
-                        width: 20,
-                        height: 20,
+                        width: 24,
+                        height: 24,
                         viewBox: '0 0 24 24',
                         fill: 'none',
                         style: { display: 'flex' },
@@ -1025,28 +1062,28 @@ async function generateSummaryCard(highlights, walletAddress) {
                     {
                       type: 'span',
                       props: {
-                        style: { fontSize: '16px', color: '#6b7280' },
+                        style: { fontSize: '18px', color: '#6b7280' },
                         children: 'Powered by',
                       },
                     },
                     {
                       type: 'span',
                       props: {
-                        style: { fontSize: '20px', fontWeight: 'bold', color: '#ffd700' },
+                        style: { fontSize: '22px', fontWeight: 'bold', color: '#ffd700' },
                         children: '$WRAPPED',
                       },
                     },
                     {
                       type: 'span',
                       props: {
-                        style: { fontSize: '16px', color: '#6b7280' },
+                        style: { fontSize: '18px', color: '#6b7280' },
                         children: '•',
                       },
                     },
                     {
                       type: 'span',
                       props: {
-                        style: { fontSize: '16px', color: '#9ca3af' },
+                        style: { fontSize: '18px', color: '#9ca3af' },
                         children: 'walletwrapped.io',
                       },
                     },
