@@ -267,7 +267,7 @@ export default function AnalyzePage() {
     });
 
     newSocket.on('connect', () => {
-      console.log('Socket connected');
+      console.log('Socket connected, id:', newSocket.id);
       newSocket.emit('subscribe', { walletAddress: address });
 
       // Wait a brief moment for subscription to be processed, then start analysis
@@ -278,7 +278,20 @@ export default function AnalyzePage() {
           console.log('Socket ready - starting analysis');
           startAnalysis();
         }
-      }, 100);
+      }, 150); // Slightly longer to ensure subscription is processed
+    });
+
+    newSocket.on('connect_error', (err) => {
+      console.error('Socket connection error:', err.message);
+    });
+
+    // Handle status events from server (emitted on subscribe if analysis exists)
+    newSocket.on('status', (data) => {
+      console.log('Socket status:', data);
+      // If analysis is already completed, redirect immediately
+      if (data.status === 'completed') {
+        router.push(`/highlights/${address}`);
+      }
     });
 
     // Fallback: if socket doesn't connect within 2 seconds, start analysis anyway

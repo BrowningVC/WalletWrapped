@@ -104,7 +104,14 @@ async function emitProgress(walletAddress, percent, message, details = {}) {
   };
 
   if (io) {
-    io.to(`analysis:${walletAddress}`).emit('progress', data);
+    const room = `analysis:${walletAddress}`;
+    io.to(room).emit('progress', data);
+    // Log subscriber count for debugging (async, don't await)
+    io.in(room).fetchSockets().then(sockets => {
+      if (sockets.length === 0 && percent < 5) {
+        console.log(`[${walletAddress}] Warning: No subscribers in room when emitting ${percent.toFixed(1)}%`);
+      }
+    }).catch(() => {});
   }
 
   await CacheManager.setAnalysisProgress(walletAddress, JSON.stringify(data));
