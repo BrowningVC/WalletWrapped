@@ -395,6 +395,37 @@ async function generateCard(highlight, walletAddress) {
                     border: `${s(1)}px solid ${colors.text}30`,
                   },
                   children: [
+                    // Calendar icon (matching client design)
+                    {
+                      type: 'svg',
+                      props: {
+                        width: s(40),
+                        height: s(40),
+                        viewBox: '0 0 64 64',
+                        style: { display: 'flex' },
+                        children: [
+                          // Calendar base
+                          { type: 'rect', props: { x: 10, y: 14, width: 44, height: 40, rx: 4, fill: '#1a1a2e', stroke: '#ffd700', strokeWidth: 2 } },
+                          // Calendar header
+                          { type: 'rect', props: { x: 10, y: 14, width: 44, height: 10, rx: 4, fill: '#2a2a42' } },
+                          { type: 'rect', props: { x: 10, y: 20, width: 44, height: 4, fill: '#2a2a42' } },
+                          // Calendar rings
+                          { type: 'rect', props: { x: 18, y: 10, width: 3, height: 8, rx: 1.5, fill: '#ffd700' } },
+                          { type: 'rect', props: { x: 31, y: 10, width: 3, height: 8, rx: 1.5, fill: '#ff6b9d' } },
+                          { type: 'rect', props: { x: 44, y: 10, width: 3, height: 8, rx: 1.5, fill: '#9d4edd' } },
+                          // Activity dots
+                          { type: 'circle', props: { cx: 17, cy: 31, r: 2, fill: '#10b981' } },
+                          { type: 'circle', props: { cx: 23, cy: 31, r: 2, fill: '#ffd700' } },
+                          { type: 'circle', props: { cx: 35, cy: 37, r: 2, fill: '#ff6b9d' } },
+                          { type: 'circle', props: { cx: 41, cy: 37, r: 2, fill: '#10b981' } },
+                          { type: 'circle', props: { cx: 29, cy: 43, r: 2, fill: '#9d4edd' } },
+                          { type: 'circle', props: { cx: 47, cy: 43, r: 2, fill: '#ffd700' } },
+                          // Trend line
+                          { type: 'path', props: { d: 'M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32', stroke: '#10b981', strokeWidth: 2, strokeLinecap: 'round', fill: 'none', opacity: 0.7 } },
+                        ],
+                      },
+                    },
+                    // Ticker text
                     {
                       type: 'div',
                       props: {
@@ -426,6 +457,32 @@ async function generateCard(highlight, walletAddress) {
                     border: `${s(1)}px solid ${colors.text}30`,
                   },
                   children: [
+                    // Calendar icon (themed with card color)
+                    {
+                      type: 'svg',
+                      props: {
+                        width: s(40),
+                        height: s(40),
+                        viewBox: '0 0 64 64',
+                        fill: 'none',
+                        style: { display: 'flex', flexShrink: 0 },
+                        children: [
+                          // Calendar base
+                          { type: 'rect', props: { x: 10, y: 14, width: 44, height: 40, rx: 4, fill: '#1a1a2e', stroke: colors.text, strokeWidth: 2 } },
+                          // Calendar header bar
+                          { type: 'rect', props: { x: 10, y: 14, width: 44, height: 10, rx: 4, fill: colors.text } },
+                          { type: 'rect', props: { x: 10, y: 20, width: 44, height: 4, fill: colors.text } },
+                          // Calendar rings/binding
+                          { type: 'rect', props: { x: 18, y: 10, width: 3, height: 8, rx: 1.5, fill: colors.text } },
+                          { type: 'rect', props: { x: 31, y: 10, width: 3, height: 8, rx: 1.5, fill: colors.text } },
+                          { type: 'rect', props: { x: 44, y: 10, width: 3, height: 8, rx: 1.5, fill: colors.text } },
+                          // Highlighted day indicator
+                          { type: 'circle', props: { cx: 32, cy: 37, r: 8, fill: colors.text, opacity: 0.3 } },
+                          { type: 'circle', props: { cx: 32, cy: 37, r: 5, fill: colors.text } },
+                        ],
+                      },
+                    },
+                    // Date text
                     {
                       type: 'div',
                       props: {
