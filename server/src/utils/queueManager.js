@@ -16,13 +16,52 @@ const redis = require('../config/redis');
 // Business (200 RPS): ~80 concurrent
 const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 20;
 
+/**
+ * Parse Redis URL into Bull-compatible config
+ * Bull doesn't support the URL format directly, so we need to parse it
+ */
+function parseRedisUrl(url) {
+  if (!url) {
+    return {
+      host: 'localhost',
+      port: 6379,
+    };
+  }
+
+  try {
+    // Handle both redis:// and rediss:// (TLS)
+    const parsed = new URL(url);
+    const config = {
+      host: parsed.hostname,
+      port: parseInt(parsed.port) || 6379,
+    };
+
+    if (parsed.password) {
+      config.password = decodeURIComponent(parsed.password);
+    }
+
+    // Enable TLS for rediss:// URLs (Railway uses this)
+    if (parsed.protocol === 'rediss:') {
+      config.tls = {
+        rejectUnauthorized: false // Railway's Redis uses self-signed certs
+      };
+    }
+
+    console.log(`Bull queue connecting to Redis at ${config.host}:${config.port} (TLS: ${!!config.tls})`);
+    return config;
+  } catch (error) {
+    console.error('Failed to parse REDIS_URL for Bull queue:', error.message);
+    return {
+      host: 'localhost',
+      port: 6379,
+    };
+  }
+}
+
 // Create Bull queue for analysis requests
+const redisConfig = parseRedisUrl(process.env.REDIS_URL);
 const analysisQueue = new Queue('wallet-analysis', {
-  redis: {
-    host: process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.REDIS_PORT) || 6379,
-    password: process.env.REDIS_PASSWORD || undefined,
-  },
+  redis: redisConfig,
   defaultJobOptions: {
     removeOnComplete: true,
     removeOnFail: false,
