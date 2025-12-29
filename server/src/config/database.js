@@ -17,10 +17,15 @@ if (dbUrl) {
 // Connection pool configuration - Railway shared Postgres has limited connections
 // With cluster mode disabled, we can use more connections safely
 const isProduction = process.env.NODE_ENV === 'production';
+const maxConnections = parseInt(process.env.DB_POOL_MAX) || (isProduction ? 20 : 20);
+const minConnections = parseInt(process.env.DB_POOL_MIN) || (isProduction ? 5 : 5);
+
+console.log(`Database pool config: max=${maxConnections}, min=${minConnections}`);
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: isProduction ? 15 : 20,   // Single process can use more connections
-  min: isProduction ? 3 : 5,     // Keep some warm connections
+  max: maxConnections,           // Configurable via DB_POOL_MAX env var
+  min: minConnections,           // Configurable via DB_POOL_MIN env var
   idleTimeoutMillis: 30000,      // Close idle connections after 30s
   connectionTimeoutMillis: 5000, // 5s to acquire connection
   statement_timeout: 120000,     // 2 minutes for large batch inserts

@@ -2,6 +2,9 @@ const { Resvg } = require('@resvg/resvg-js');
 const fs = require('fs');
 const path = require('path');
 
+// Card generator version - increment to force cache invalidation
+const CARD_GENERATOR_VERSION = 2;
+
 // Satori is an ES module with default export - need dynamic import
 let satori = null;
 let satoriLoadPromise = null;
@@ -67,6 +70,7 @@ async function loadFonts() {
       console.log(`[CardGen] Inter-Regular loaded (${interRegular.length} bytes)`);
       console.log(`[CardGen] Inter-Bold loaded (${interBold.length} bytes)`);
       console.log('[CardGen] All fonts loaded successfully from bundled files');
+      console.log(`[CardGen] Card Generator v${CARD_GENERATOR_VERSION} ready (with ticker badge support)`);
       return true;
     } catch (error) {
       console.error('[CardGen] Font loading failed:', error.message);
