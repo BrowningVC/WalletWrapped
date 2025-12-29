@@ -6,16 +6,29 @@ const redis = require('../config/redis');
  * Handles background wallet analysis jobs
  */
 
-// Extract Redis connection details from URL
-const redisUrl = new URL(process.env.REDIS_URL || 'redis://localhost:6379');
-const redisConfig = {
-  host: redisUrl.hostname,
-  port: redisUrl.port || 6379,
-  password: redisUrl.password || undefined,
-  db: 0,
-  maxRetriesPerRequest: null,
-  enableReadyCheck: false
-};
+// Extract Redis connection details from URL with safe error handling
+let redisConfig;
+try {
+  const redisUrl = new URL(process.env.REDIS_URL || 'redis://localhost:6379');
+  redisConfig = {
+    host: redisUrl.hostname,
+    port: redisUrl.port || 6379,
+    password: redisUrl.password || undefined,
+    db: 0,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false
+  };
+} catch (error) {
+  // Don't log the URL as it may contain credentials
+  console.error('Failed to parse Redis URL for Bull queue:', error.message);
+  redisConfig = {
+    host: 'localhost',
+    port: 6379,
+    db: 0,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: false
+  };
+}
 
 /**
  * Analysis Queue

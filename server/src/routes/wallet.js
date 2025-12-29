@@ -266,6 +266,12 @@ router.get('/wallet/:address/highlights', async (req, res) => {
           await AnalysisOrchestrator.runAnalysis(address, true);
         } catch (e) {
           console.error('Failed to run highlights refresh:', e.message);
+          // Record failure in database so subsequent requests know status
+          try {
+            await DatabaseQueries.updateAnalysisStatus(address, 'failed', e.message);
+          } catch (dbErr) {
+            console.error(`Failed to update analysis status for ${address}:`, dbErr.message);
+          }
         }
       });
     }
@@ -423,8 +429,15 @@ router.post('/wallet/:address/refresh', validateCSRFToken, async (req, res) => {
     await DatabaseQueries.resetAnalysisForRefresh(address);
 
     // Start fresh analysis (not incremental since we want to regenerate everything)
-    AnalysisOrchestrator.runAnalysis(address, false).catch(err => {
+    // Using void to explicitly mark as fire-and-forget with proper error handling
+    void AnalysisOrchestrator.runAnalysis(address, false).catch(async (err) => {
       console.error(`Refresh analysis failed for ${address}:`, err.message);
+      // Record failure in database so client can see status
+      try {
+        await DatabaseQueries.updateAnalysisStatus(address, 'failed', err.message);
+      } catch (dbErr) {
+        console.error(`Failed to update analysis status for ${address}:`, dbErr.message);
+      }
     });
 
     res.json({

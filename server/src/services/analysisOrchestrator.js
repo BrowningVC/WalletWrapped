@@ -30,10 +30,41 @@ try {
 // walletAddress -> { abortController, startTime, cleanedUp }
 const activeAnalyses = new Map();
 
-// Constants for cleanup
+// Constants for cleanup and bounds
 // With 30k tx limit: ~40 minutes max + 5 minute buffer = 45 minutes
 const MAX_ANALYSIS_DURATION = parseInt(process.env.MAX_ANALYSIS_DURATION) || 45 * 60 * 1000; // 45 minutes max
 const CLEANUP_INTERVAL = 10 * 60 * 1000; // Check for stale entries every 10 minutes
+const MAX_CONCURRENT_ANALYSES = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 30; // Bounded map size
+
+/**
+ * Force cleanup of oldest analysis if at capacity
+ * This prevents unbounded memory growth
+ */
+function enforceCapacityLimit() {
+  if (activeAnalyses.size < MAX_CONCURRENT_ANALYSES) return;
+
+  // Find and remove the oldest non-cleaned entry
+  let oldestAddress = null;
+  let oldestTime = Infinity;
+
+  for (const [address, data] of activeAnalyses.entries()) {
+    if (!data.cleanedUp && data.startTime < oldestTime) {
+      oldestTime = data.startTime;
+      oldestAddress = address;
+    }
+  }
+
+  if (oldestAddress) {
+    const data = activeAnalyses.get(oldestAddress);
+    console.warn(`[Capacity] Evicting oldest analysis: ${oldestAddress} (started ${Math.round((Date.now() - oldestTime) / 1000 / 60)}min ago)`);
+    data.cleanedUp = true;
+    data.abortController.abort();
+    activeAnalyses.delete(oldestAddress);
+    RateLimiter.releaseDuplicateLock(oldestAddress).catch(err =>
+      console.error(`Failed to release lock for evicted ${oldestAddress}:`, err)
+    );
+  }
+}
 
 // Socket.io instance (set by server)
 let io = null;
@@ -177,6 +208,9 @@ async function emitError(walletAddress, error) {
 async function runAnalysis(walletAddress, incremental = false) {
   const startTime = Date.now();
   const abortController = new AbortController();
+
+  // Enforce capacity limit before adding new analysis
+  enforceCapacityLimit();
 
   // Track this analysis for cancellation support
   const analysisState = { abortController, startTime, cleanedUp: false };
@@ -360,22 +394,33 @@ async function runAnalysis(walletAddress, incremental = false) {
       const generateCardWithRetry = async (highlight, index, isSummary = false) => {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
           const cardGenStart = Date.now();
+          let timeoutId = null;
+
           try {
-            // Wrap in timeout promise
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Card generation timeout')), CARD_TIMEOUT)
-            );
+            // Wrap in timeout promise with cleanup
+            const timeoutPromise = new Promise((_, reject) => {
+              timeoutId = setTimeout(() => {
+                reject(new Error('Card generation timeout'));
+              }, CARD_TIMEOUT);
+            });
 
             const genPromise = isSummary
               ? CardGenerator.generateSummaryCard(highlight, walletAddress)
               : CardGenerator.generateCard(highlight, walletAddress);
 
             const buffer = await Promise.race([genPromise, timeoutPromise]);
+
+            // Clear timeout on success
+            if (timeoutId) clearTimeout(timeoutId);
+
             await CacheManager.cacheCardImage(walletAddress, index, buffer);
             const duration = Date.now() - cardGenStart;
             console.log(`[Card Gen] Card ${index} generated (${buffer.length} bytes, ${duration}ms)`);
             return { cardIndex: index, success: true, duration };
           } catch (err) {
+            // Clear timeout on error
+            if (timeoutId) clearTimeout(timeoutId);
+
             const duration = Date.now() - cardGenStart;
             if (attempt < MAX_RETRIES) {
               console.warn(`[Card Gen] Card ${index} attempt ${attempt} failed (${duration}ms): ${err.message} - retrying...`);

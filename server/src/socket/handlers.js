@@ -46,12 +46,22 @@ function initializeSocketHandlers(io) {
         if (analysis.analysis_status === 'processing') {
           const progress = await CacheManager.getAnalysisProgress(walletAddress);
           if (progress) {
-            const progressData = JSON.parse(progress);
-            socket.emit('progress', {
-              percent: progressData.percent,
-              message: progressData.message,
-              timestamp: progressData.timestamp
-            });
+            try {
+              const progressData = JSON.parse(progress);
+              socket.emit('progress', {
+                percent: progressData.percent,
+                message: progressData.message,
+                timestamp: progressData.timestamp
+              });
+            } catch (parseError) {
+              // Invalid JSON in cache, fallback to database progress
+              console.warn(`Invalid progress JSON for ${walletAddress}:`, parseError.message);
+              socket.emit('progress', {
+                percent: analysis.progress_percent || 0,
+                message: 'Analysis in progress...',
+                timestamp: new Date().toISOString()
+              });
+            }
           } else {
             // Fallback to database progress
             socket.emit('progress', {

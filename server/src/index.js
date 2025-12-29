@@ -435,14 +435,26 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Handle uncaught errors
+// Uncaught exceptions are fatal - they indicate corrupted state
 process.on('uncaughtException', (error) => {
   console.error('Uncaught exception:', error);
   gracefulShutdown('UNCAUGHT_EXCEPTION');
 });
 
+// Unhandled rejections are logged but don't crash the process
+// This prevents a single failed promise from taking down the entire server
+let unhandledRejectionCount = 0;
+const MAX_UNHANDLED_REJECTIONS = 100; // Crash if too many rejections indicate systemic issue
+
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled rejection at:', promise, 'reason:', reason);
-  gracefulShutdown('UNHANDLED_REJECTION');
+  unhandledRejectionCount++;
+  console.error(`Unhandled rejection #${unhandledRejectionCount}:`, reason);
+
+  // If we hit too many unhandled rejections, something is systematically wrong
+  if (unhandledRejectionCount >= MAX_UNHANDLED_REJECTIONS) {
+    console.error(`Too many unhandled rejections (${unhandledRejectionCount}), shutting down...`);
+    gracefulShutdown('TOO_MANY_UNHANDLED_REJECTIONS');
+  }
 });
 
 // Start the server - cluster mode disabled by default for Railway (limited DB connections)

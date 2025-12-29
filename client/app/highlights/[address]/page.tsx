@@ -773,7 +773,13 @@ ${summaryLines}`;
 
       // Open X with pre-filled tweet
       const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`;
-      window.open(tweetUrl, '_blank', 'width=550,height=420');
+      // Use window features only on desktop (mobile browsers ignore them anyway)
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.open(tweetUrl, '_blank');
+      } else {
+        window.open(tweetUrl, '_blank', 'width=550,height=420');
+      }
 
       // Only show success toast if image was copied
       if (imageCopied) {
@@ -788,7 +794,12 @@ ${summaryLines}`;
       // Still open X even if clipboard failed
       const fallbackText = `My 2025 in the Trenches Wrapped:\n\n${highlights.map(h => `${h.title}: ${h.value}`).join('\n')}`;
       const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(fallbackText)}`;
-      window.open(tweetUrl, '_blank', 'width=550,height=420');
+      const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      if (isMobile) {
+        window.open(tweetUrl, '_blank');
+      } else {
+        window.open(tweetUrl, '_blank', 'width=550,height=420');
+      }
       setShareStatus('idle');
     }
   };
@@ -801,6 +812,47 @@ ${summaryLines}`;
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [currentCard, data]);
+
+  // Mobile swipe gesture support
+  useEffect(() => {
+    const cardElement = cardRef.current;
+    if (!cardElement) return;
+
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      touchStartX = e.changedTouches[0].screenX;
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      touchEndX = e.changedTouches[0].screenX;
+      handleSwipe();
+    };
+
+    const handleSwipe = () => {
+      const swipeThreshold = 50; // Minimum distance for swipe (px)
+      const diff = touchStartX - touchEndX;
+
+      if (Math.abs(diff) > swipeThreshold) {
+        if (diff > 0) {
+          // Swiped left -> next card
+          nextCard();
+        } else {
+          // Swiped right -> previous card
+          prevCard();
+        }
+      }
+    };
+
+    cardElement.addEventListener('touchstart', handleTouchStart, { passive: true });
+    cardElement.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      cardElement.removeEventListener('touchstart', handleTouchStart);
+      cardElement.removeEventListener('touchend', handleTouchEnd);
+    };
   }, [currentCard, data]);
 
   if (loading) {
@@ -901,12 +953,15 @@ ${summaryLines}`;
         </div>
       )}
       {shareStatus === 'success' && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-slide-down">
-          <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-black text-white font-medium shadow-lg border border-gray-700">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-            </svg>
-            Image copied! Paste (Cmd+V) in your tweet
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-slide-down max-w-[90vw]">
+          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 px-4 sm:px-5 py-3 rounded-xl bg-black text-white font-medium shadow-lg border border-gray-700">
+            <div className="flex items-center gap-2">
+              <svg className="w-5 h-5 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+              </svg>
+              <span className="text-sm sm:text-base">Image copied!</span>
+            </div>
+            <span className="text-xs sm:text-sm text-gray-400">Paste in the next screen</span>
           </div>
         </div>
       )}
@@ -983,7 +1038,11 @@ ${summaryLines}`;
             </svg>
           </button>
 
-          <div ref={cardRef} style={{ width: '400px', height: '520px', position: 'relative' }}>
+          <div
+            ref={cardRef}
+            className="w-full max-w-[400px] mx-auto"
+            style={{ aspectRatio: '10/13', position: 'relative' }}
+          >
             {/* Loading skeleton */}
             {imageLoading && (
               <div
@@ -1020,10 +1079,8 @@ ${summaryLines}`;
               key={currentCard}
               src={`/api/card/${address}/${currentCard}`}
               alt={`${highlight.title} card`}
+              className="w-full h-full rounded-2xl"
               style={{
-                width: '400px',
-                height: '520px',
-                borderRadius: '16px',
                 display: 'block',
                 opacity: imageLoading ? 0 : 1,
                 transition: 'opacity 0.2s ease-in-out',
@@ -1068,8 +1125,8 @@ ${summaryLines}`;
         </div>
 
         {/* Share to X with Summary Preview */}
-        <div className="flex gap-4 mb-6 items-center p-4 rounded-xl bg-dark-800/50 border border-primary-500/50 animate-glow-pulse shadow-lg shadow-primary-500/20">
-          <div className="flex-1">
+        <div className="flex flex-col sm:flex-row gap-4 mb-6 items-center p-4 rounded-xl bg-dark-800/50 border border-primary-500/50 animate-glow-pulse shadow-lg shadow-primary-500/20">
+          <div className="flex-1 w-full">
             <div className="text-sm text-gray-400 mb-2">Share your complete 2025 summary</div>
             <button
               onClick={shareToX}
@@ -1098,7 +1155,7 @@ ${summaryLines}`;
             </button>
           </div>
           {/* Summary Card Thumbnail */}
-          <div className="relative flex-shrink-0" style={{ width: '80px', height: '100px' }}>
+          <div className="relative flex-shrink-0 sm:w-20 sm:h-[100px] w-24 h-[120px]">
             <img
               src={`/api/card/${address}/summary`}
               alt="Summary preview"
@@ -1192,8 +1249,8 @@ ${summaryLines}`;
           </button>
         </div>
 
-        {/* All Highlights Grid - 2 rows of 3 */}
-        <div className="grid grid-cols-3 gap-2 mb-8">
+        {/* All Highlights Grid - 2 rows of 3 (2 cols on mobile) */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-2 mb-8">
           {data.highlights.map((h, idx) => {
             const HighlightIcon = getHighlightIcon(h.type);
             const isRevealed = revealedCards.has(idx); // Persistent reveal state

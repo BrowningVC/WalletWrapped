@@ -2,10 +2,51 @@ const { PublicKey } = require('@solana/web3.js');
 const redis = require('../config/redis');
 require('dotenv').config();
 
-// Helius API base URL with API key
+// Helius API configuration - API key stored securely, not in URLs
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const HELIUS_API_URL = `https://api.helius.xyz/v0`;
-const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`;
+const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com`;
+
+/**
+ * Simple LRU Cache implementation with bounded size
+ * Prevents unbounded memory growth from metadata caching
+ */
+class LRUCache {
+  constructor(maxSize = 10000) {
+    this.maxSize = maxSize;
+    this.cache = new Map();
+  }
+
+  get(key) {
+    if (!this.cache.has(key)) return undefined;
+    // Move to end (most recently used)
+    const value = this.cache.get(key);
+    this.cache.delete(key);
+    this.cache.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    // Delete if exists to reset position
+    if (this.cache.has(key)) {
+      this.cache.delete(key);
+    }
+    // Evict oldest if at capacity
+    if (this.cache.size >= this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      this.cache.delete(oldestKey);
+    }
+    this.cache.set(key, value);
+  }
+
+  has(key) {
+    return this.cache.has(key);
+  }
+
+  get size() {
+    return this.cache.size;
+  }
+}
 
 /**
  * Semaphore for controlling concurrent Helius API requests
@@ -64,7 +105,7 @@ const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
  */
 async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
-    const url = `${HELIUS_API_URL}${endpoint}?api-key=${HELIUS_API_KEY}`;
+    const url = `${HELIUS_API_URL}${endpoint}`;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       // Create abort controller for timeout (60s for POST since it handles more data)
@@ -75,7 +116,8 @@ async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${HELIUS_API_KEY}`
           },
           body: JSON.stringify(body),
           signal: controller.signal
@@ -132,7 +174,8 @@ async function heliusRPC(method, params, maxRetries = 3) {
         const response = await fetch(HELIUS_RPC_URL, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${HELIUS_API_KEY}`
           },
           body: JSON.stringify({
             jsonrpc: '2.0',
@@ -209,7 +252,8 @@ const STABLECOINS = new Set([
 
 // In-memory metadata cache for faster lookups during analysis
 // Reduces redundant API calls for frequently-seen tokens
-const metadataCache = new Map();
+// Using LRU cache with bounded size (10,000 tokens max) to prevent memory leaks
+const metadataCache = new LRUCache(10000);
 
 /**
  * Helius Service - Handles all Solana blockchain data fetching via Helius API
@@ -811,7 +855,10 @@ class HeliusService {
       try {
         const response = await fetch(HELIUS_RPC_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${HELIUS_API_KEY}`
+          },
           body: JSON.stringify({
             jsonrpc: '2.0',
             id: 1,
