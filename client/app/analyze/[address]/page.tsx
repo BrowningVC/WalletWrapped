@@ -180,6 +180,60 @@ export default function AnalyzePage() {
     return () => clearInterval(interval);
   }, [progress, displayProgress]);
 
+  // Fallback polling for status when WebSocket events don't arrive
+  useEffect(() => {
+    if (!address || progress === 100 || error) return;
+
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+    let pollCount = 0;
+    const maxPolls = 120; // 2 minutes max polling
+
+    const pollStatus = async () => {
+      try {
+        const response = await fetch(`${apiUrl}/api/analyze/${address}/status`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        console.log('Poll status:', data);
+
+        if (data.status === 'completed') {
+          setProgress(100);
+          setCurrentStage('completing');
+          setCurrentStep(6);
+          setStatusMessage('Analysis complete! Redirecting...');
+          router.push(`/highlights/${address}`);
+          return;
+        }
+
+        if (data.status === 'failed') {
+          setError(data.error || 'Analysis failed');
+          return;
+        }
+
+        // Update progress from polling if WebSocket isn't delivering
+        if (data.progress > progress) {
+          setProgress(data.progress);
+          setStatusMessage(data.message || 'Processing...');
+          setLastUpdateTime(Date.now());
+        }
+      } catch (err) {
+        console.error('Poll status error:', err);
+      }
+    };
+
+    // Poll every 3 seconds as fallback
+    const pollInterval = setInterval(() => {
+      pollCount++;
+      if (pollCount > maxPolls) {
+        clearInterval(pollInterval);
+        return;
+      }
+      pollStatus();
+    }, 3000);
+
+    return () => clearInterval(pollInterval);
+  }, [address, progress, error, router]);
+
   useEffect(() => {
     if (!address) return;
 
