@@ -650,6 +650,40 @@ export default function AnalyzePage() {
     router.push('/');
   };
 
+  // Retry analysis - reconnects socket and restarts
+  const handleRetry = async () => {
+    console.log('Retrying analysis...');
+
+    // Disconnect existing socket
+    if (socket) {
+      socket.emit('unsubscribe', { walletAddress: address });
+      socket.disconnect();
+      setSocket(null);
+    }
+
+    // Reset state
+    setProgress(0);
+    setDisplayProgress(0);
+    setSimulatedProgress(0);
+    setIsStalled(false);
+    setError('');
+    setStatusMessage('Reconnecting...');
+    setCurrentStep(1);
+    setCurrentStage('initializing');
+    setLastUpdateTime(Date.now());
+    setSecondsSinceUpdate(0);
+    setAnalysisStarted(false);
+
+    // Small delay before restarting
+    await new Promise(r => setTimeout(r, 500));
+
+    // Trigger re-connection by resetting startTime (which triggers the useEffect)
+    setStartTime(Date.now());
+
+    // Force a page reload to restart the analysis cleanly
+    window.location.reload();
+  };
+
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -991,6 +1025,33 @@ export default function AnalyzePage() {
               </div>
             </div>
           </div>
+
+          {/* Stall Warning with Retry */}
+          {isStalled && (
+            <div className="mb-4 p-4 rounded-xl bg-festive-gold/10 border border-festive-gold/30 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-festive-gold flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-festive-gold">Analysis appears stuck</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    No progress for {secondsSinceUpdate} seconds. This can happen with large wallets or network issues.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleRetry}
+                className="mt-3 w-full py-2.5 px-4 rounded-lg bg-festive-gold/20 hover:bg-festive-gold/30 border border-festive-gold/40 text-festive-gold font-medium text-sm transition-all duration-200 flex items-center justify-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Retry Analysis
+              </button>
+            </div>
+          )}
 
           {/* Cancel button */}
           <button

@@ -1,7 +1,24 @@
-const satori = require('satori');
 const { Resvg } = require('@resvg/resvg-js');
 const fs = require('fs');
 const path = require('path');
+
+// Satori is an ES module with default export - need dynamic import
+let satori = null;
+let satoriLoadPromise = null;
+
+async function loadSatori() {
+  if (satori) return satori;
+  if (satoriLoadPromise) return satoriLoadPromise;
+
+  satoriLoadPromise = (async () => {
+    const satoriModule = await import('satori');
+    satori = satoriModule.default;
+    console.log('[CardGen] Satori module loaded successfully');
+    return satori;
+  })();
+
+  return satoriLoadPromise;
+}
 
 /**
  * Server-side Card Image Generator
