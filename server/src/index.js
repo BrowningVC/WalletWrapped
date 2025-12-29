@@ -41,6 +41,14 @@ const PORT = process.env.PORT || 3002;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:3000';
 
+// All allowed client origins for CORS
+const ALLOWED_ORIGINS = [
+  CLIENT_URL,
+  'https://walletwrapped.com',
+  'https://www.walletwrapped.com',
+  'https://wallet-wrapped-client-production.up.railway.app',  // Railway client
+];
+
 /**
  * Express App Setup
  */
@@ -50,9 +58,7 @@ const server = http.createServer(app);
 // Socket.io setup with CORS
 const io = new Server(server, {
   cors: {
-    origin: NODE_ENV === 'production'
-      ? [CLIENT_URL, 'https://walletwrapped.com', 'https://www.walletwrapped.com']
-      : '*',
+    origin: NODE_ENV === 'production' ? ALLOWED_ORIGINS : '*',
     methods: ['GET', 'POST'],
     credentials: true
   },
@@ -88,7 +94,7 @@ app.use(helmet({
 // CORS - must specify explicit origins when using credentials
 app.use(cors({
   origin: NODE_ENV === 'production'
-    ? [CLIENT_URL, 'https://walletwrapped.com', 'https://www.walletwrapped.com']
+    ? ALLOWED_ORIGINS
     : ['http://localhost:3000', 'http://127.0.0.1:3000', CLIENT_URL],
   credentials: true
 }));
