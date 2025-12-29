@@ -341,15 +341,24 @@ export default function AnalyzePage() {
 
     // Handle status events from server (emitted on subscribe if analysis exists)
     newSocket.on('status', (data) => {
-      console.log('Socket status:', data);
+      console.log('📡 Socket status event received:', JSON.stringify(data));
       // If analysis is already completed, show completion and schedule redirect
       if (data.status === 'completed') {
+        console.log('📡 Status indicates completed - scheduling redirect');
         setProgress(100);
         setCurrentStage('completing');
         setCurrentStep(6);
         setStatusMessage('Analysis complete! Preparing your highlights...');
         pendingRedirectRef.current = `/highlights/${address}`;
         setAnalysisComplete(true);
+      } else if (data.status === 'processing') {
+        console.log('📡 Status indicates processing - analysis in progress');
+        // If there's progress info, update it
+        if (data.progress !== undefined) {
+          setProgress(data.progress);
+        }
+      } else if (data.status === 'not_found') {
+        console.log('📡 Status indicates not_found - need to start analysis');
       }
     });
 
@@ -452,24 +461,39 @@ export default function AnalyzePage() {
       console.log('Got CSRF token, starting POST...');
 
       // Now make the analyze request with CSRF token
-      const response = await fetch(`${apiUrl}/api/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': csrfToken,
-        },
-        credentials: 'include',
-        body: JSON.stringify({ walletAddress: address }),
-      });
-      console.log('POST response:', response.status);
+      console.log('📮 Making POST request to /api/analyze...');
+      let response;
+      try {
+        response = await fetch(`${apiUrl}/api/analyze`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': csrfToken,
+          },
+          credentials: 'include',
+          body: JSON.stringify({ walletAddress: address }),
+        });
+        console.log('📮 POST response status:', response.status);
+      } catch (fetchError: any) {
+        console.error('📮 POST fetch error:', fetchError.message);
+        throw fetchError;
+      }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+        console.log('📮 POST response data:', JSON.stringify(data));
+      } catch (jsonError: any) {
+        console.error('📮 Failed to parse response JSON:', jsonError.message);
+        throw new Error('Invalid server response');
+      }
 
       if (!response.ok) {
+        console.error('📮 POST failed:', data);
         throw new Error(data.message || 'Failed to start analysis');
       }
 
-      console.log('Analysis started:', data);
+      console.log('✅ Analysis started successfully:', data);
 
       if (data.status === 'completed') {
         setProgress(100);
