@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { io, Socket } from 'socket.io-client';
@@ -181,21 +181,25 @@ export default function AnalyzePage() {
   }, [progress, displayProgress]);
 
   // Fallback polling for status when WebSocket events don't arrive
+  // Use a ref to track current progress to avoid stale closure issues
+  const progressRef = useRef(progress);
+  progressRef.current = progress;
+
   useEffect(() => {
-    if (!address || progress === 100 || error) return;
+    if (!address || error) return;
 
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
     let pollCount = 0;
-    const maxPolls = 180; // 3 minutes max polling
-    let currentInterval: NodeJS.Timeout;
+    let isCancelled = false;
 
     const pollStatus = async () => {
+      if (isCancelled || progressRef.current === 100) return;
+
       try {
         const response = await fetch(`${apiUrl}/api/analyze/${address}/status`);
-        if (!response.ok) return;
+        if (!response.ok || isCancelled) return;
 
         const data = await response.json();
-        console.log('Poll status:', data);
 
         if (data.status === 'completed') {
           setProgress(100);
@@ -212,50 +216,42 @@ export default function AnalyzePage() {
         }
 
         // Update progress from polling if WebSocket isn't delivering
-        if (data.progress > progress) {
+        // Use ref to get current value, avoiding stale closure
+        if (data.progress > progressRef.current) {
           setProgress(data.progress);
           setStatusMessage(data.message || 'Processing...');
           setLastUpdateTime(Date.now());
         }
       } catch (err) {
-        console.error('Poll status error:', err);
+        // Silently ignore polling errors - WebSocket is primary
       }
     };
 
-    // Poll more frequently at the start (every 1 second for first 10 polls)
-    // Then slow down to every 2 seconds
-    const startPolling = () => {
-      currentInterval = setInterval(() => {
-        pollCount++;
-        if (pollCount > maxPolls) {
-          clearInterval(currentInterval);
-          return;
-        }
-        pollStatus();
+    // Adaptive polling: faster at start, slower after initial period
+    // Uses setTimeout chain instead of nested intervals to avoid leaks
+    const schedulePoll = () => {
+      if (isCancelled || progressRef.current === 100) return;
 
-        // After first 10 polls, slow down the interval
-        if (pollCount === 10) {
-          clearInterval(currentInterval);
-          currentInterval = setInterval(() => {
-            pollCount++;
-            if (pollCount > maxPolls) {
-              clearInterval(currentInterval);
-              return;
-            }
-            pollStatus();
-          }, 2000);
-        }
-      }, 1000);
+      pollCount++;
+      // Stop after 3 minutes (90 polls at 2s average)
+      if (pollCount > 90) return;
+
+      pollStatus().finally(() => {
+        if (isCancelled || progressRef.current === 100) return;
+        // Fast polling for first 10, then slow down
+        const delay = pollCount <= 10 ? 1000 : 2000;
+        setTimeout(schedulePoll, delay);
+      });
     };
 
     // Delay first poll by 500ms to let socket establish
-    const initialDelay = setTimeout(startPolling, 500);
+    const initialDelay = setTimeout(schedulePoll, 500);
 
     return () => {
+      isCancelled = true;
       clearTimeout(initialDelay);
-      clearInterval(currentInterval);
     };
-  }, [address, progress, error, router]);
+  }, [address, error, router]);
 
   useEffect(() => {
     if (!address) return;
