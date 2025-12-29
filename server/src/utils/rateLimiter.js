@@ -177,14 +177,25 @@ class RateLimiter {
    */
   static async scanKeys(pattern) {
     const keys = [];
-    let cursor = '0';
+    let cursor = 0;
 
-    do {
-      // SCAN returns [nextCursor, keys]
-      const result = await redis.redis.scan(cursor, 'MATCH', pattern, 'COUNT', 100);
-      cursor = result[0];
-      keys.push(...result[1]);
-    } while (cursor !== '0');
+    try {
+      do {
+        // node-redis v4 uses scanIterator or scan with options object
+        const result = await redis.redis.scan(cursor, {
+          MATCH: pattern,
+          COUNT: 100
+        });
+        cursor = result.cursor;
+        if (result.keys && result.keys.length > 0) {
+          keys.push(...result.keys);
+        }
+      } while (cursor !== 0);
+    } catch (error) {
+      console.error('scanKeys error:', error.message);
+      // Return empty array on error - don't crash
+      return [];
+    }
 
     return keys;
   }
