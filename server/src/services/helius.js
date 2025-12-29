@@ -2,10 +2,10 @@ const { PublicKey } = require('@solana/web3.js');
 const redis = require('../config/redis');
 require('dotenv').config();
 
-// Helius API configuration - API key stored securely, not in URLs
+// Helius API configuration - API key stored securely
 const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 const HELIUS_API_URL = `https://api.helius.xyz/v0`;
-const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com`;
+const HELIUS_RPC_URL = `https://mainnet.helius-rpc.com?api-key=${HELIUS_API_KEY}`;
 
 /**
  * Simple LRU Cache implementation with bounded size
@@ -105,7 +105,8 @@ const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
  */
 async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
   return heliusSemaphore.run(async () => {
-    const url = `${HELIUS_API_URL}${endpoint}`;
+    // Helius API requires api-key as query parameter for /transactions endpoint
+    const url = `${HELIUS_API_URL}${endpoint}?api-key=${HELIUS_API_KEY}`;
 
     // Adaptive timeout based on batch size (20s base + 200ms per transaction)
     // For 100 tx batch: 40s, for 1000 tx: 220s (capped at 180s = 3min)
@@ -121,8 +122,7 @@ async function heliusPostRequest(endpoint, body = {}, maxRetries = 3) {
         const response = await fetch(url, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${HELIUS_API_KEY}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify(body),
           signal: controller.signal
@@ -179,8 +179,7 @@ async function heliusRPC(method, params, maxRetries = 3) {
         const response = await fetch(HELIUS_RPC_URL, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${HELIUS_API_KEY}`
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             jsonrpc: '2.0',
