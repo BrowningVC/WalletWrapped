@@ -15,12 +15,13 @@ if (dbUrl) {
 }
 
 // Connection pool configuration - Railway shared Postgres has limited connections
+// With cluster mode disabled, we can use more connections safely
 const isProduction = process.env.NODE_ENV === 'production';
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  max: isProduction ? 5 : 10,   // Railway shared Postgres has ~20 max connections
-  min: 1,                        // Minimal warm connections
-  idleTimeoutMillis: 10000,      // Close idle connections quickly (10s)
+  max: isProduction ? 15 : 20,   // Single process can use more connections
+  min: isProduction ? 3 : 5,     // Keep some warm connections
+  idleTimeoutMillis: 30000,      // Close idle connections after 30s
   connectionTimeoutMillis: 5000, // 5s to acquire connection
   statement_timeout: 120000,     // 2 minutes for large batch inserts
   application_name: 'walletwrapped',
@@ -84,8 +85,8 @@ async function batchInsert(table, columns, values, batchSize = 500) {
     batches.push(values.slice(i, i + batchSize));
   }
 
-  // Process batches in parallel - limit concurrency for Railway
-  const PARALLEL_BATCHES = isProduction ? 3 : 5;
+  // Process batches in parallel - can use more with single process
+  const PARALLEL_BATCHES = isProduction ? 5 : 8;
   const results = [];
 
   for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {
