@@ -1,6 +1,19 @@
 const { Pool } = require('pg');
 require('dotenv').config();
 
+// Log database URL (masked) for debugging Railway connections
+const dbUrl = process.env.DATABASE_URL;
+if (dbUrl) {
+  try {
+    const url = new URL(dbUrl);
+    console.log(`Database URL configured: ${url.protocol}//${url.username}:***@${url.hostname}:${url.port}${url.pathname}`);
+  } catch (e) {
+    console.log('Database URL configured (could not parse for logging)');
+  }
+} else {
+  console.error('WARNING: DATABASE_URL is not set!');
+}
+
 // Optimized connection pool configuration for 50+ concurrent analyses
 // Phase 2 optimization: Increased warm connections and query timeout
 const pool = new Pool({
@@ -10,7 +23,8 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,     // Close idle connections after 30s
   connectionTimeoutMillis: 10000, // 10s to acquire connection
   statement_timeout: 120000,    // 2 minutes for large batch inserts (30k txs)
-  application_name: 'walletwrapped'
+  application_name: 'walletwrapped',
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 // Handle pool errors
