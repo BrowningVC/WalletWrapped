@@ -90,11 +90,11 @@ class Semaphore {
 // Helius rate limits by plan:
 // - Free: 10 RPS (1M credits)
 // - Developer ($49/mo): 50 RPS (10M credits)
-// - Business ($499/mo): 200 RPS (100M credits)
+// - Business ($499/mo): 200 RPS (100M credits) <-- CURRENT PLAN
 // - Professional ($999/mo): 500 RPS (200M credits)
 //
-// Set via environment variable or default to free tier
-const HELIUS_RPS_LIMIT = parseInt(process.env.HELIUS_RPS_LIMIT) || 10;
+// Set via environment variable or default to Business tier (200 RPS)
+const HELIUS_RPS_LIMIT = parseInt(process.env.HELIUS_RPS_LIMIT) || 200;
 const heliusSemaphore = new Semaphore(HELIUS_RPS_LIMIT);
 
 /**
@@ -233,12 +233,13 @@ const SIGNATURE_BATCH_SIZE = 1000; // RPC allows up to 1000 - use max for fewer 
 const ENHANCED_TX_BATCH_SIZE = 100; // Helius Enhanced Transactions API limit
 
 // Scale parallelism based on RPS limit
-// Free (10 RPS): 3 parallel batches (increased from 2)
-// Paid (50+ RPS): 60 parallel batches (increased from 40 - fetches 6000 txs per round)
-// Premium (100+ RPS): 80 parallel batches (fetches 8000 txs per round)
+// Free (10 RPS): 3 parallel batches, 3 parallel requests
+// Developer (50 RPS): 60 parallel batches, 15 parallel requests (fetches 6000 txs per round)
+// Business (200 RPS): 150 parallel batches, 50 parallel requests (fetches 15000 txs per round)
+// Professional (500 RPS): 200 parallel batches, 80 parallel requests
 // Semaphore ensures we never exceed actual RPS limit
-const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 100 ? 80 : (HELIUS_RPS_LIMIT >= 50 ? 60 : 3);
-const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 100 ? 20 : (HELIUS_RPS_LIMIT >= 50 ? 15 : 3);
+const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 200 ? 150 : (HELIUS_RPS_LIMIT >= 100 ? 80 : (HELIUS_RPS_LIMIT >= 50 ? 60 : 3));
+const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 200 ? 50 : (HELIUS_RPS_LIMIT >= 100 ? 20 : (HELIUS_RPS_LIMIT >= 50 ? 15 : 3));
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 500ms base delay

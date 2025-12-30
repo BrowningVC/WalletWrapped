@@ -34,7 +34,8 @@ const redisEnvVars = [
 
 const optionalEnvVars = [
   { name: 'CLIENT_URL', description: 'Frontend URL for CORS', default: 'http://localhost:3000' },
-  { name: 'HELIUS_RPS_LIMIT', description: 'Helius API rate limit (RPS)', type: 'number', default: 10 },
+  { name: 'HELIUS_RPS_LIMIT', description: 'Helius API rate limit (RPS)', type: 'number', default: 200 },
+  { name: 'MAX_CONCURRENT_ANALYSES', description: 'Max concurrent wallet analyses', type: 'number', default: 80 },
   { name: 'REDIS_PASSWORD', description: 'Redis password (if required)' },
 ];
 

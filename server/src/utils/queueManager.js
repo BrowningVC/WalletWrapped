@@ -13,8 +13,9 @@ const redis = require('../config/redis');
 
 // Max concurrent analyses based on Helius plan
 // Developer (50 RPS): ~20 concurrent
-// Business (200 RPS): ~80 concurrent
-const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 20;
+// Business (200 RPS): ~80 concurrent <-- CURRENT PLAN
+// Professional (500 RPS): ~150 concurrent
+const MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 80;
 
 /**
  * Parse Redis URL into Bull-compatible config

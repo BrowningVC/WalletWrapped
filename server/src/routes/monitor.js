@@ -127,7 +127,7 @@ router.get('/health', async (req, res) => {
       QueueManager.getQueueStats(),
     ]);
 
-    const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 20;
+    const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 80;
     const isHealthy = activeCount < maxConcurrent * 1.5; // Alert if 50% over capacity
 
     res.json({

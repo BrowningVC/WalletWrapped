@@ -158,7 +158,7 @@ class SystemMonitor {
         redis.redis.get('monitor:stats:failed_analyses'),
       ]);
 
-      const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 20;
+      const maxConcurrent = parseInt(process.env.MAX_CONCURRENT_ANALYSES) || 80;
       const utilizationPercent = Math.round((activeCount / maxConcurrent) * 100);
 
       return {
