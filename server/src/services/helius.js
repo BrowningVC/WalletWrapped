@@ -283,7 +283,7 @@ class HeliusService {
    * Optimized: Reports progress immediately after first batch for faster UX
    */
   static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
-    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 50000;
+    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 100000;
 
     // Only analyze last 12 months (WalletWrapped = your year wrapped)
     const twelveMonthsAgo = Math.floor(Date.now() / 1000) - (365 * 24 * 60 * 60);
