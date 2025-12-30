@@ -205,7 +205,22 @@ export default function AnalyzePage() {
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [pageReady, setPageReady] = useState(false);
   const [analysisStarted, setAnalysisStarted] = useState(false); // Track when POST completes
+  const [tokenCopied, setTokenCopied] = useState(false);
   const pendingRedirectRef = useRef<string | null>(null);
+
+  // Token contract address
+  const tokenContract = 'COMING_SOON';
+
+  const copyTokenContract = async () => {
+    if (tokenContract === 'COMING_SOON') return;
+    try {
+      await navigator.clipboard.writeText(tokenContract);
+      setTokenCopied(true);
+      setTimeout(() => setTokenCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
   const pageLoadTimeRef = useRef<number>(Date.now());
 
   // Minimum time to show progress UI before redirecting (allows user to see animation)
@@ -755,10 +770,52 @@ export default function AnalyzePage() {
       <div className="flex items-center justify-center min-h-[calc(100vh-40px)] px-4">
         <div className="max-w-2xl w-full relative z-10">
           {/* Header with logo */}
-          <div className="flex items-center justify-center mb-6">
+          <div className="flex items-center justify-center mb-4">
             <Link href="/" className="hover:opacity-80 transition-opacity">
               <Logo size="small" />
             </Link>
+          </div>
+
+          {/* $WRAPPED Token Section */}
+          <div className="mb-6 max-w-md mx-auto">
+            <h3 className="text-base font-semibold mb-2 text-center">
+              <span className="festive-gradient-text">$WRAPPED</span>
+              <span className="text-white"> Token</span>
+            </h3>
+
+            <div className="flex items-center gap-2 bg-dark-800/50 border border-dark-700 rounded-lg p-2.5 hover:border-festive-gold/30 transition-colors">
+              <div className="flex-1 text-left font-mono text-sm text-gray-400 overflow-x-auto">
+                {tokenContract}
+              </div>
+
+              <button
+                onClick={copyTokenContract}
+                disabled={tokenContract === 'COMING_SOON'}
+                className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 text-sm ${
+                  tokenContract === 'COMING_SOON'
+                    ? 'bg-dark-700 text-gray-500 cursor-not-allowed'
+                    : tokenCopied
+                    ? 'bg-festive-gold/20 text-festive-gold'
+                    : 'bg-festive-gold/10 text-festive-gold hover:bg-festive-gold/20'
+                }`}
+              >
+                {tokenCopied ? (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                    Copy
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
         {/* Main card */}
