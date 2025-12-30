@@ -25,6 +25,9 @@ const walletRoutes = require('./routes/wallet');
 const monitorRoutes = require('./routes/monitor');
 const adminRoutes = require('./routes/admin');
 
+// Services
+const PriceOracle = require('./services/priceOracle');
+
 // Middleware
 const { attachCSRFToken } = require('./middleware/csrf');
 
@@ -272,11 +275,20 @@ app.get('/api/stats', async (req, res) => {
     const volume = volumeStats.rows[0];
     const activeAnalyses = AnalysisOrchestrator.getActiveCount();
 
+    // Get current SOL price for USD conversion
+    let solPriceUsd = 0;
+    try {
+      solPriceUsd = await PriceOracle.getSolPriceUSD();
+    } catch (e) {
+      console.error('Failed to get SOL price:', e.message);
+    }
+
     res.json({
       walletsAnalyzed: parseInt(stats.wallets_analyzed) || 0,
       totalAnalyses: parseInt(stats.total_analyses) || 0,
       totalTransactions: parseInt(stats.total_transactions) || 0,
       totalVolumeSol: parseFloat(volume.total_volume_sol) || 0,
+      solPriceUsd: solPriceUsd,
       activeAnalyses: activeAnalyses,
       // Leaderboard stats
       highestPnl: highestPnl.rows[0] ? {
@@ -301,6 +313,7 @@ app.get('/api/stats', async (req, res) => {
       totalAnalyses: 0,
       totalTransactions: 0,
       totalVolumeSol: 0,
+      solPriceUsd: 0,
       activeAnalyses: 0,
       highestPnl: null,
       biggestWin: null,
