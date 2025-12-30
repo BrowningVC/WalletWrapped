@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import WalletInput from '@/components/landing/WalletInput';
-import WalletCounter from '@/components/WalletCounter';
 import Fireworks from '@/components/Fireworks';
 import Logo from '@/components/Logo';
 import StatsTicker from '@/components/StatsTicker';
@@ -53,14 +52,10 @@ export default function HomePage() {
 
         <div className="relative container mx-auto px-4 py-12 sm:py-20">
           <div className="max-w-4xl mx-auto text-center">
-            {/* Logo at the top with counter directly underneath - centered */}
+            {/* Logo at the top */}
             <div className="mb-10 animate-slide-down-simple">
               <div className="flex justify-center">
                 <Logo size="large" />
-              </div>
-              {/* Live Wallet Counter - centered under logo */}
-              <div className="mt-4 animate-fade-in flex justify-center" style={{ animationDelay: '0.3s' }}>
-                <WalletCounter showActive={true} />
               </div>
             </div>
 

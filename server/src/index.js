@@ -227,14 +227,13 @@ app.get('/api/stats', async (req, res) => {
   res.set('Cache-Control', 'public, max-age=30');
 
   try {
-    // Get wallet counts and total transactions
+    // Get wallet counts (all wallets ever analyzed) and transaction totals (from completed only)
     const analysisStats = await query(`
       SELECT
         COUNT(DISTINCT wallet_address) as wallets_analyzed,
         COUNT(*) as total_analyses,
-        COALESCE(SUM(total_transactions), 0) as total_transactions
+        COALESCE(SUM(CASE WHEN analysis_status = 'completed' THEN total_transactions ELSE 0 END), 0) as total_transactions
       FROM wallet_analyses
-      WHERE analysis_status = 'completed'
     `);
 
     // Get total volume (sum of all SOL spent + received across all positions)
