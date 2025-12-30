@@ -6,6 +6,7 @@ import WalletInput from '@/components/landing/WalletInput';
 import Fireworks from '@/components/Fireworks';
 import Logo from '@/components/Logo';
 import StatsTicker from '@/components/StatsTicker';
+import LiveAnalysisCounter from '@/components/LiveAnalysisCounter';
 
 export default function HomePage() {
   const router = useRouter();
@@ -79,10 +80,15 @@ export default function HomePage() {
 
             {/* Token Contract Section - moved below analyze button */}
             <div className="mt-8 max-w-xl mx-auto animate-slide-up delay-300">
-              <h3 className="text-lg font-semibold mb-3 text-center">
-                <span className="festive-gradient-text">$WRAPPED</span>
-                <span className="text-white"> Token</span>
-              </h3>
+              <div className="flex items-center justify-center gap-3 mb-3">
+                <h3 className="text-lg font-semibold text-center">
+                  <span className="festive-gradient-text">$WRAPPED</span>
+                  <span className="text-white"> Token</span>
+                </h3>
+
+                {/* Live Analysis Counter */}
+                <LiveAnalysisCounter />
+              </div>
 
               <div className="flex items-center gap-2 bg-dark-800/50 border border-dark-700 rounded-lg p-3 hover:border-festive-gold/30 transition-colors">
                 <div className="flex-1 text-left font-mono text-sm text-gray-400 overflow-x-auto">
