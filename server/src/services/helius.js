@@ -714,7 +714,82 @@ class HeliusService {
   }
 
   /**
+   * Fallback: Get token metadata from Jupiter
+   */
+  static async getMetadataFromJupiter(mint) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`https://tokens.jup.ag/token/${mint}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      if (data && data.symbol && data.symbol !== '') {
+        return {
+          mint,
+          symbol: data.symbol,
+          name: data.name || data.symbol,
+          decimals: data.decimals || 9,
+          supply: 0
+        };
+      }
+      return null;
+    } catch (error) {
+      console.warn(`Jupiter API failed for ${mint}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * Fallback: Get token metadata from DexScreener
+   */
+  static async getMetadataFromDexScreener(mint) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+      const response = await fetch(`https://api.dexscreener.com/latest/dex/tokens/${mint}`, {
+        headers: { 'Accept': 'application/json' },
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) return null;
+
+      const data = await response.json();
+      if (data && data.pairs && data.pairs.length > 0) {
+        const pair = data.pairs[0];
+        const tokenSymbol = pair.baseToken?.symbol || pair.quoteToken?.symbol;
+        const tokenName = pair.baseToken?.name || pair.quoteToken?.name;
+
+        if (tokenSymbol && tokenSymbol !== '') {
+          return {
+            mint,
+            symbol: tokenSymbol,
+            name: tokenName || tokenSymbol,
+            decimals: 9,
+            supply: 0
+          };
+        }
+      }
+      return null;
+    } catch (error) {
+      console.warn(`DexScreener API failed for ${mint}:`, error.message);
+      return null;
+    }
+  }
+
+  /**
    * Get token metadata from Helius (with in-memory + Redis cache)
+   * Falls back to Jupiter and DexScreener if Helius returns UNKNOWN
    */
   static async getTokenMetadata(mint) {
     // Check in-memory cache first (fastest)
@@ -736,8 +811,10 @@ class HeliusService {
       }
     }
 
+    let info = null;
+
+    // Try Helius DAS API first
     try {
-      // Use Helius DAS API for asset metadata
       const response = await fetch(HELIUS_RPC_URL, {
         method: 'POST',
         headers: {
@@ -755,22 +832,35 @@ class HeliusService {
       const data = await response.json();
       const metadata = data.result;
 
-      const info = {
-        mint,
-        symbol: metadata?.content?.metadata?.symbol || 'UNKNOWN',
-        name: metadata?.content?.metadata?.name || 'Unknown Token',
-        decimals: metadata?.token_info?.decimals || 9,
-        supply: metadata?.token_info?.supply || 0
-      };
-
-      // Cache in both Redis (7 days) and in-memory
-      await redis.setex(`token:${mint}:metadata`, 604800, JSON.stringify(info));
-      metadataCache.set(mint, info);
-      return info;
-
+      // Only use Helius data if we got a real symbol
+      if (metadata?.content?.metadata?.symbol && metadata.content.metadata.symbol !== '') {
+        info = {
+          mint,
+          symbol: metadata.content.metadata.symbol,
+          name: metadata.content.metadata.name || metadata.content.metadata.symbol,
+          decimals: metadata.token_info?.decimals || 9,
+          supply: metadata.token_info?.supply || 0
+        };
+      }
     } catch (error) {
-      console.error(`Failed to fetch metadata for ${mint}:`, error.message);
-      return {
+      console.warn(`Helius metadata failed for ${mint}:`, error.message);
+    }
+
+    // Fallback to Jupiter if Helius didn't return valid metadata
+    if (!info) {
+      console.log(`[Metadata] Trying Jupiter fallback for ${mint}`);
+      info = await this.getMetadataFromJupiter(mint);
+    }
+
+    // Fallback to DexScreener if Jupiter didn't return valid metadata
+    if (!info) {
+      console.log(`[Metadata] Trying DexScreener fallback for ${mint}`);
+      info = await this.getMetadataFromDexScreener(mint);
+    }
+
+    // If all sources failed, mark as UNKNOWN
+    if (!info) {
+      info = {
         mint,
         symbol: 'UNKNOWN',
         name: 'Unknown Token',
@@ -778,6 +868,13 @@ class HeliusService {
         supply: 0
       };
     }
+
+    // Cache with appropriate TTL: 7 days for known tokens, 1 hour for UNKNOWN
+    const cacheTTL = info.symbol !== 'UNKNOWN' ? 604800 : 3600;
+    await redis.setex(`token:${mint}:metadata`, cacheTTL, JSON.stringify(info));
+    metadataCache.set(mint, info);
+
+    return info;
   }
 
   /**
