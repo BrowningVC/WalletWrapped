@@ -96,7 +96,8 @@ export default function StatsTicker() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+        // Use production API URL as fallback for cases where env var isn't set at build time
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.walletwrapped.io';
         const response = await fetch(`${apiUrl}/api/stats`);
         if (response.ok) {
           const data = await response.json();

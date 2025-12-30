@@ -15,12 +15,15 @@ export default function LiveAnalysisCounter() {
           const data = await response.json();
           // Inflate by 12 as baseline
           setActiveCount((data.count || 0) + 12);
-          setIsLoading(false);
+        } else {
+          // Default to baseline if API returns error
+          setActiveCount(12);
         }
       } catch (error) {
         console.error('Failed to fetch active analyses:', error);
         // Default to baseline if fetch fails
         setActiveCount(12);
+      } finally {
         setIsLoading(false);
       }
     };

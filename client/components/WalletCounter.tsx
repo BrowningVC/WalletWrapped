@@ -21,7 +21,8 @@ export default function WalletCounter({ variant = 'default', showActive = false 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002';
+        // Use production API URL as fallback for cases where env var isn't set at build time
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.walletwrapped.io';
         const response = await fetch(`${apiUrl}/api/stats`, {
           cache: 'no-store',
           headers: { 'Cache-Control': 'no-cache' }
@@ -32,10 +33,10 @@ export default function WalletCounter({ variant = 'default', showActive = false 
             walletsAnalyzed: data.walletsAnalyzed || 0,
             activeAnalyses: data.activeAnalyses || 0,
           });
-          setIsLoading(false);
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
+      } finally {
         setIsLoading(false);
       }
     };
