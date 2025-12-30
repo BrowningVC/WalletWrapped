@@ -132,14 +132,14 @@ async function transaction(callback) {
 }
 
 // Batch insert helper (for performance)
-async function batchInsert(table, columns, values, batchSize = 500) {
+async function batchInsert(table, columns, values, batchSize = 1000) {
   const batches = [];
   for (let i = 0; i < values.length; i += batchSize) {
     batches.push(values.slice(i, i + batchSize));
   }
 
-  // Process batches in parallel - can use more with single process
-  const PARALLEL_BATCHES = isProduction ? 5 : 8;
+  // Process batches in parallel - increased for better throughput
+  const PARALLEL_BATCHES = isProduction ? 8 : 10;
   const results = [];
 
   for (let i = 0; i < batches.length; i += PARALLEL_BATCHES) {

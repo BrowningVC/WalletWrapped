@@ -233,11 +233,12 @@ const SIGNATURE_BATCH_SIZE = 1000; // RPC allows up to 1000 - use max for fewer 
 const ENHANCED_TX_BATCH_SIZE = 100; // Helius Enhanced Transactions API limit
 
 // Scale parallelism based on RPS limit
-// Free (10 RPS): 2 parallel batches
-// Paid (50+ RPS): 40 parallel batches (fetches 4000 txs per round)
-// This is aggressive but the semaphore will throttle if needed
-const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 50 ? 40 : 2;
-const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 50 ? 15 : 3;
+// Free (10 RPS): 3 parallel batches (increased from 2)
+// Paid (50+ RPS): 60 parallel batches (increased from 40 - fetches 6000 txs per round)
+// Premium (100+ RPS): 80 parallel batches (fetches 8000 txs per round)
+// Semaphore ensures we never exceed actual RPS limit
+const PARALLEL_ENHANCED_BATCHES = HELIUS_RPS_LIMIT >= 100 ? 80 : (HELIUS_RPS_LIMIT >= 50 ? 60 : 3);
+const PARALLEL_REQUESTS = HELIUS_RPS_LIMIT >= 100 ? 20 : (HELIUS_RPS_LIMIT >= 50 ? 15 : 3);
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 500; // 500ms base delay
