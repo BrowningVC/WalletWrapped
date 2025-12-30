@@ -284,9 +284,14 @@ class HeliusService {
    */
   static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
     const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 50000;
+
+    // Only analyze last 12 months (WalletWrapped = your year wrapped)
+    const twelveMonthsAgo = Math.floor(Date.now() / 1000) - (365 * 24 * 60 * 60);
+
     const allSignatures = [];
     let beforeSignature = null;
     let batchCount = 0;
+    let reachedTimeLimit = false;
 
     while (true) {
       const params = [walletAddress, { limit: SIGNATURE_BATCH_SIZE }];
@@ -300,11 +305,28 @@ class HeliusService {
         break;
       }
 
-      // Filter out null/invalid entries and extract signatures
-      const signatures = response
-        .filter(tx => tx && tx.signature)
-        .map(tx => tx.signature);
+      // Filter transactions by time (last 12 months only)
+      const recentTransactions = response.filter(tx => {
+        if (!tx || !tx.signature) return false;
+
+        // Check if transaction is within last 12 months
+        if (tx.blockTime && tx.blockTime < twelveMonthsAgo) {
+          reachedTimeLimit = true;
+          return false;
+        }
+
+        return true;
+      });
+
+      // Extract signatures from recent transactions
+      const signatures = recentTransactions.map(tx => tx.signature);
       allSignatures.push(...signatures);
+
+      // If we've reached transactions older than 12 months, stop fetching
+      if (reachedTimeLimit) {
+        console.log(`Stopped fetching at 12-month boundary (${allSignatures.length} transactions in last year)`);
+        break;
+      }
 
       // Get cursor from last valid entry
       const lastValidTx = response.filter(tx => tx && tx.signature).pop();
@@ -315,9 +337,10 @@ class HeliusService {
       progressCallback(0, allSignatures.length, 'counting');
 
       // Check if we've exceeded the transaction limit (anti-bot protection)
+      // Note: With 12-month filter, this is less likely to trigger
       if (allSignatures.length > MAX_TRANSACTION_LIMIT) {
         throw new Error(
-          `This wallet has ${allSignatures.length}+ transactions, exceeding our limit of ${MAX_TRANSACTION_LIMIT}. ` +
+          `This wallet has ${allSignatures.length}+ transactions in the last 12 months, exceeding our limit of ${MAX_TRANSACTION_LIMIT}. ` +
           `This appears to be a bot wallet. WalletWrapped is designed for human traders only. ` +
           `If you believe this is an error, please contact support.`
         );
