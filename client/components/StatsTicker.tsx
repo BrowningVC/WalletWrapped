@@ -109,10 +109,13 @@ export default function StatsTicker() {
             biggestWin: data.biggestWin,
             biggestLoss: data.biggestLoss,
           });
-          setIsLoading(false);
+        } else {
+          console.error('Failed to fetch stats: HTTP', response.status);
         }
       } catch (error) {
         console.error('Failed to fetch stats:', error);
+      } finally {
+        // Always set loading to false, whether success or failure
         setIsLoading(false);
       }
     };
