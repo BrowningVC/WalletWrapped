@@ -244,29 +244,30 @@ app.get('/api/stats', async (req, res) => {
     `);
 
     // Get highest overall P&L (from highlights table)
+    // value_primary = USD, value_secondary = SOL
     const highestPnl = await query(`
-      SELECT value_primary, metadata
+      SELECT value_primary, value_secondary, metadata
       FROM highlights
       WHERE highlight_type = 'overall_pnl'
-      ORDER BY value_primary DESC
+      ORDER BY value_secondary DESC
       LIMIT 1
     `);
 
     // Get biggest single trade win
     const biggestWin = await query(`
-      SELECT value_primary, metadata
+      SELECT value_primary, value_secondary, metadata
       FROM highlights
       WHERE highlight_type = 'biggest_win'
-      ORDER BY value_primary DESC
+      ORDER BY value_secondary DESC
       LIMIT 1
     `);
 
     // Get biggest single trade loss
     const biggestLoss = await query(`
-      SELECT value_primary, metadata
+      SELECT value_primary, value_secondary, metadata
       FROM highlights
       WHERE highlight_type = 'biggest_loss'
-      ORDER BY value_primary ASC
+      ORDER BY value_secondary ASC
       LIMIT 1
     `);
 
@@ -289,17 +290,17 @@ app.get('/api/stats', async (req, res) => {
       totalVolumeSol: parseFloat(volume.total_volume_sol) || 0,
       solPriceUsd: solPriceUsd,
       activeAnalyses: activeAnalyses,
-      // Leaderboard stats
+      // Leaderboard stats (value_secondary contains SOL amount)
       highestPnl: highestPnl.rows[0] ? {
-        valueSol: parseFloat(highestPnl.rows[0].value_primary) || 0,
+        valueSol: parseFloat(highestPnl.rows[0].value_secondary) || 0,
         wallet: highestPnl.rows[0].metadata?.wallet_short || null
       } : null,
       biggestWin: biggestWin.rows[0] ? {
-        valueSol: parseFloat(biggestWin.rows[0].value_primary) || 0,
+        valueSol: parseFloat(biggestWin.rows[0].value_secondary) || 0,
         ticker: biggestWin.rows[0].metadata?.token_symbol || null
       } : null,
       biggestLoss: biggestLoss.rows[0] ? {
-        valueSol: parseFloat(biggestLoss.rows[0].value_primary) || 0,
+        valueSol: parseFloat(biggestLoss.rows[0].value_secondary) || 0,
         ticker: biggestLoss.rows[0].metadata?.token_symbol || null
       } : null,
       timestamp: new Date().toISOString()
