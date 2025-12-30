@@ -188,7 +188,10 @@ class PNLCalculator {
       metadata: {
         hasEstimatedTransfers: false,
         transferCount: 0,
-        hasMEVActivity: false
+        hasMEVActivity: false,
+        // v2 additions for data integrity tracking
+        hasUntrackedTransferIn: false,  // True if we detected sells/transfers without matching buys
+        untrackedTokenAmount: 0         // Total tokens that were untracked
       }
     };
   }
@@ -306,6 +309,14 @@ class PNLCalculator {
 
   /**
    * Process SELL transaction with FIFO cost basis
+   *
+   * FIX (v2): When selling more tokens than we have records of buying,
+   * we now create a phantom "transfer-in" to maintain data integrity.
+   * This prevents negative balances and phantom P&L from untracked transfers.
+   *
+   * Root cause: Some swaps via aggregators (Jupiter, etc.) may be misclassified
+   * as transfers, or transfer-in transactions may not be properly detected.
+   * The phantom buy represents tokens that entered the wallet but weren't tracked.
    */
   static processSell(position, tx) {
     let remainingToSell = tx.tokenAmount;
@@ -333,13 +344,29 @@ class PNLCalculator {
       }
     }
 
-    // Handle case where sold more than bought (shouldn't happen but be safe)
+    // FIX: Handle case where sold more than bought (untracked transfer-in)
+    // Instead of just logging a warning, we now create a phantom "buy" to maintain integrity
+    // This prevents negative balances and phantom P&L from distorting highlights
     if (remainingToSell > 0) {
       console.warn(
-        `Sold more than bought for ${position.tokenSymbol}: remaining=${remainingToSell}`
+        `[PNL FIX] Sold more than bought for ${position.tokenSymbol}: excess=${remainingToSell.toFixed(4)}, ` +
+        `creating phantom transfer-in at price ${tx.priceSol.toFixed(9)} SOL`
       );
-      // Use current price as cost basis for excess
-      totalCostBasis += remainingToSell * tx.priceSol;
+
+      // Calculate estimated cost for the untracked tokens
+      // Use sell price as the estimated acquisition cost (conservative: assumes break-even)
+      const estimatedCost = remainingToSell * tx.priceSol;
+      totalCostBasis += estimatedCost;
+
+      // CRITICAL FIX: Add the untracked tokens to tokensBought to prevent negative balance
+      // This represents tokens that were transferred in but not tracked
+      position.tokensBought += remainingToSell;
+      position.solSpent += estimatedCost;
+
+      // Mark position as having estimation issues
+      position.metadata.hasEstimatedTransfers = true;
+      position.metadata.hasUntrackedTransferIn = true;
+      position.metadata.untrackedTokenAmount = (position.metadata.untrackedTokenAmount || 0) + remainingToSell;
     }
 
     // Calculate realized P&L (subtract fee from proceeds)
@@ -381,6 +408,8 @@ class PNLCalculator {
    * @param {Object} position - Position to update
    * @param {Object} tx - Transaction to process
    * @param {Object} priceCache - Pre-fetched prices for all tokens (optimization)
+   *
+   * FIX (v2): Same fix as processSell - handle untracked transfers
    */
   static processTransferOut(position, tx, priceCache = {}) {
     // Get current price for estimation from pre-fetched cache
@@ -411,6 +440,26 @@ class PNLCalculator {
         lot.costBasisSol -= costBasis;
         remainingToTransfer = 0;
       }
+    }
+
+    // FIX: Handle case where transferred out more than bought (untracked transfer-in)
+    if (remainingToTransfer > 0) {
+      console.warn(
+        `[PNL FIX] Transferred out more than bought for ${position.tokenSymbol}: excess=${remainingToTransfer.toFixed(4)}, ` +
+        `creating phantom transfer-in at price ${currentPrice.toFixed(9)} SOL`
+      );
+
+      // Calculate estimated cost for the untracked tokens (break-even assumption)
+      const estimatedCost = remainingToTransfer * currentPrice;
+      totalCostBasis += estimatedCost;
+
+      // CRITICAL FIX: Add the untracked tokens to tokensBought to prevent negative balance
+      position.tokensBought += remainingToTransfer;
+      position.solSpent += estimatedCost;
+
+      // Mark position as having estimation issues
+      position.metadata.hasUntrackedTransferIn = true;
+      position.metadata.untrackedTokenAmount = (position.metadata.untrackedTokenAmount || 0) + remainingToTransfer;
     }
 
     // Calculate estimated realized P&L

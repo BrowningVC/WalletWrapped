@@ -17,8 +17,9 @@ const HeliusService = require('./helius');
  * v9 - Use REALIZED P&L only for Win/Loss/WinRate (matches GMGN.ai) + PumpFun accountData fix
  * v10 - Added sanity checks for unreasonably high P&L values (>100k SOL), falls back to FIFO if needed
  * v11 - Added retry logic for UNKNOWN tokens before generating highlights
+ * v12 - Added hasSuspiciousPNL filter + fixed negative balance bug in pnl.js
  */
-const HIGHLIGHTS_VERSION = 11;
+const HIGHLIGHTS_VERSION = 12;
 
 // Stablecoins and wrapped tokens to exclude from win/loss calculations
 // These are used for swapping, not trading
@@ -181,12 +182,53 @@ class HighlightsGenerator {
   }
 
   /**
+   * Helper: Check if a position has suspicious/unrealistic P&L that should be excluded
+   * This catches positions with data integrity issues that slipped through
+   *
+   * Heuristics:
+   * 1. Realized P&L magnitude > 10,000 SOL on a position with < 100 SOL volume is suspicious
+   * 2. Positions with hasUntrackedTransferIn AND extreme P&L may be inaccurate
+   */
+  static hasSuspiciousPNL(position) {
+    const absPNL = Math.abs(position.realizedPNL);
+    const totalVolume = (position.solSpent || 0) + (position.solReceived || 0);
+
+    // Skip check for small P&L (under 100 SOL)
+    if (absPNL < 100) return false;
+
+    // Red flag 1: P&L is > 100x the trading volume
+    // e.g., trading 10 SOL but claiming 1000 SOL profit/loss is impossible
+    if (totalVolume > 0 && absPNL > totalVolume * 100) {
+      console.warn(
+        `[HIGHLIGHTS SANITY] Suspicious P&L for ${position.tokenSymbol}: ` +
+        `P&L=${position.realizedPNL.toFixed(2)} SOL, volume=${totalVolume.toFixed(2)} SOL ` +
+        `(ratio: ${(absPNL / totalVolume).toFixed(1)}x)`
+      );
+      return true;
+    }
+
+    // Red flag 2: Position has untracked transfers AND extreme P&L (> 1000 SOL)
+    // These are likely calculation artifacts from missing transfer data
+    if (position.metadata?.hasUntrackedTransferIn && absPNL > 1000) {
+      console.warn(
+        `[HIGHLIGHTS SANITY] Suspicious P&L with untracked transfers for ${position.tokenSymbol}: ` +
+        `P&L=${position.realizedPNL.toFixed(2)} SOL, untracked=${position.metadata.untrackedTokenAmount}`
+      );
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
    * 2. Biggest Win - Token with highest REALIZED P&L (excluding stablecoins)
    * This shows actual profits from closed trades, not paper gains
+   *
+   * v12: Added hasSuspiciousPNL filter to exclude positions with data integrity issues
    */
   static async biggestWin(positions, solPriceUSD) {
     const winner = Object.values(positions)
-      .filter(p => p.realizedPNL > 0 && !this.isExcludedToken(p))
+      .filter(p => p.realizedPNL > 0 && !this.isExcludedToken(p) && !this.hasSuspiciousPNL(p))
       .sort((a, b) => b.realizedPNL - a.realizedPNL)[0];
 
     // Fallback if no winning trades
@@ -233,10 +275,12 @@ class HighlightsGenerator {
   /**
    * 3. Biggest Loss - Token with most negative REALIZED P&L (excluding stablecoins)
    * This shows actual losses from closed trades, not paper losses
+   *
+   * v12: Added hasSuspiciousPNL filter to exclude positions with data integrity issues
    */
   static async biggestLoss(positions, solPriceUSD) {
     const loser = Object.values(positions)
-      .filter(p => p.realizedPNL < 0 && !this.isExcludedToken(p))
+      .filter(p => p.realizedPNL < 0 && !this.isExcludedToken(p) && !this.hasSuspiciousPNL(p))
       .sort((a, b) => a.realizedPNL - b.realizedPNL)[0];
 
     // Fallback if no losing trades
