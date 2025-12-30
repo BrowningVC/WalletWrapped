@@ -283,7 +283,7 @@ class HeliusService {
    * Optimized: Reports progress immediately after first batch for faster UX
    */
   static async fetchAllSignatures(walletAddress, progressCallback = () => {}) {
-    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 30000;
+    const MAX_TRANSACTION_LIMIT = parseInt(process.env.MAX_TRANSACTION_LIMIT) || 50000;
     const allSignatures = [];
     let beforeSignature = null;
     let batchCount = 0;
