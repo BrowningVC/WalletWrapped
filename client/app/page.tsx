@@ -13,8 +13,8 @@ export default function HomePage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Token contract address - update this when you have one
-  const tokenContract = 'COMING_SOON';
+  // Token contract address
+  const tokenContract = 'BU2jc1iamnkQN9a6FZjT9rxkrwYzj9mRGP82ASiCpump';
 
   const handleAnalyze = (address: string) => {
     setIsAnalyzing(true);
@@ -22,8 +22,6 @@ export default function HomePage() {
   };
 
   const copyTokenContract = async () => {
-    if (tokenContract === 'COMING_SOON') return;
-
     try {
       await navigator.clipboard.writeText(tokenContract);
       setCopied(true);
@@ -97,11 +95,8 @@ export default function HomePage() {
 
                 <button
                   onClick={copyTokenContract}
-                  disabled={tokenContract === 'COMING_SOON'}
                   className={`px-3 py-1.5 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${
-                    tokenContract === 'COMING_SOON'
-                      ? 'bg-dark-700 text-gray-500 cursor-not-allowed'
-                      : copied
+                    copied
                       ? 'bg-festive-gold/20 text-festive-gold'
                       : 'bg-festive-gold/10 text-festive-gold hover:bg-festive-gold/20'
                   }`}

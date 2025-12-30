@@ -691,11 +691,9 @@ export default function HighlightsPage() {
   const [tokenCopied, setTokenCopied] = useState(false);
 
   // Token contract address - same as main page
-  const tokenContract = 'COMING_SOON';
+  const tokenContract = 'BU2jc1iamnkQN9a6FZjT9rxkrwYzj9mRGP82ASiCpump';
 
   const copyTokenContract = async () => {
-    if (tokenContract === 'COMING_SOON') return;
-
     try {
       await navigator.clipboard.writeText(tokenContract);
       setTokenCopied(true);
@@ -997,15 +995,12 @@ ${summaryLines}
               <span className="text-sm font-bold bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple bg-clip-text text-transparent">$WRAPPED</span>
               <button
                 onClick={copyTokenContract}
-                disabled={tokenContract === 'COMING_SOON'}
                 className={`p-1 rounded transition-all duration-200 ${
-                  tokenContract === 'COMING_SOON'
-                    ? 'text-gray-600 cursor-not-allowed'
-                    : tokenCopied
-                      ? 'text-green-400'
-                      : 'text-gray-400 hover:text-festive-gold'
+                  tokenCopied
+                    ? 'text-green-400'
+                    : 'text-gray-400 hover:text-festive-gold'
                 }`}
-                title={tokenContract === 'COMING_SOON' ? 'Token address coming soon' : 'Copy token address'}
+                title="Copy token address"
               >
                 {tokenCopied ? (
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

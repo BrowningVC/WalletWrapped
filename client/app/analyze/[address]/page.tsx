@@ -209,10 +209,9 @@ export default function AnalyzePage() {
   const pendingRedirectRef = useRef<string | null>(null);
 
   // Token contract address
-  const tokenContract = 'COMING_SOON';
+  const tokenContract = 'BU2jc1iamnkQN9a6FZjT9rxkrwYzj9mRGP82ASiCpump';
 
   const copyTokenContract = async () => {
-    if (tokenContract === 'COMING_SOON') return;
     try {
       await navigator.clipboard.writeText(tokenContract);
       setTokenCopied(true);
@@ -790,11 +789,8 @@ export default function AnalyzePage() {
 
               <button
                 onClick={copyTokenContract}
-                disabled={tokenContract === 'COMING_SOON'}
                 className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 text-sm ${
-                  tokenContract === 'COMING_SOON'
-                    ? 'bg-dark-700 text-gray-500 cursor-not-allowed'
-                    : tokenCopied
+                  tokenCopied
                     ? 'bg-festive-gold/20 text-festive-gold'
                     : 'bg-festive-gold/10 text-festive-gold hover:bg-festive-gold/20'
                 }`}
