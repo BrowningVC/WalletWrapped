@@ -189,7 +189,21 @@ export default function StatsTicker() {
   // Duplicate items for seamless loop
   const allItems = [...tickerItems, ...tickerItems];
 
-  if (isLoading || tickerItems.length === 0) {
+  // Show a thin loading bar while fetching stats
+  if (isLoading) {
+    return (
+      <div className="w-full h-10 bg-dark-900/80 backdrop-blur-sm border-b border-dark-700/50">
+        <div className="h-full flex items-center justify-center">
+          <div className="w-24 h-1 bg-dark-700 rounded-full overflow-hidden">
+            <div className="h-full w-1/2 bg-festive-gold/50 animate-pulse rounded-full" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if no stats available
+  if (tickerItems.length === 0) {
     return null;
   }
 
