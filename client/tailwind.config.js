@@ -85,6 +85,7 @@ module.exports = {
         'confetti': 'confetti 3s ease-out infinite',
         'float': 'float 3s ease-in-out infinite',
         'shimmer': 'shimmer-slide 1.5s ease-in-out infinite',
+        'ticker-scroll': 'ticker-scroll 40s linear infinite',
       },
       keyframes: {
         'pulse-glow': {
@@ -144,6 +145,10 @@ module.exports = {
         'spin-reverse': {
           '0%': { transform: 'rotate(360deg)' },
           '100%': { transform: 'rotate(0deg)' },
+        },
+        'ticker-scroll': {
+          '0%': { transform: 'translateX(0)' },
+          '100%': { transform: 'translateX(-50%)' },
         },
       },
       boxShadow: {

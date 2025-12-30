@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 
 interface PlatformStats {
   walletsAnalyzed: number;
@@ -91,7 +91,6 @@ interface TickerItem {
 export default function StatsTicker() {
   const [stats, setStats] = useState<PlatformStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -201,13 +200,7 @@ export default function StatsTicker() {
         <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-dark-900 to-transparent z-10 pointer-events-none" />
 
         {/* Scrolling content */}
-        <div
-          ref={scrollRef}
-          className="flex items-center gap-8 animate-scroll whitespace-nowrap"
-          style={{
-            animationDuration: `${tickerItems.length * 8}s`,
-          }}
-        >
+        <div className="flex items-center gap-8 animate-ticker-scroll whitespace-nowrap hover:[animation-play-state:paused]">
           {allItems.map((item, index) => (
             <div key={index} className="flex items-center gap-2 px-2">
               <span className={item.color}>{item.icon}</span>
@@ -220,23 +213,6 @@ export default function StatsTicker() {
         {/* Right fade gradient */}
         <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-dark-900 to-transparent z-10 pointer-events-none" />
       </div>
-
-      <style jsx>{`
-        @keyframes scroll {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-        .animate-scroll {
-          animation: scroll linear infinite;
-        }
-        .animate-scroll:hover {
-          animation-play-state: paused;
-        }
-      `}</style>
     </div>
   );
 }
