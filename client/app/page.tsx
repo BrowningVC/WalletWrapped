@@ -6,6 +6,7 @@ import WalletInput from '@/components/landing/WalletInput';
 import WalletCounter from '@/components/WalletCounter';
 import Fireworks from '@/components/Fireworks';
 import Logo from '@/components/Logo';
+import StatsTicker from '@/components/StatsTicker';
 
 export default function HomePage() {
   const router = useRouter();
@@ -34,6 +35,9 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-dark-950">
+      {/* Stats Ticker Bar */}
+      <StatsTicker />
+
       {/* Fireworks background effect */}
       <Fireworks />
 

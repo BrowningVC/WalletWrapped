@@ -7,96 +7,42 @@
   <rect width="1500" height="500" fill="url(#bgGradient)" opacity="0.6"/>
 
   <!-- Ambient glow orbs -->
-  <circle cx="300" cy="150" r="200" fill="#ffd700" opacity="0.04" filter="blur(80px)"/>
-  <circle cx="1200" cy="350" r="180" fill="#9d4edd" opacity="0.04" filter="blur(70px)"/>
-  <circle cx="750" cy="250" r="300" fill="#ff6b9d" opacity="0.02" filter="blur(100px)"/>
+  <circle cx="300" cy="150" r="250" fill="#ffd700" opacity="0.035" filter="blur(80px)"/>
+  <circle cx="1200" cy="350" r="220" fill="#9d4edd" opacity="0.035" filter="blur(70px)"/>
+  <circle cx="750" cy="250" r="350" fill="#ff6b9d" opacity="0.02" filter="blur(100px)"/>
 
   <!-- Decorative grid lines (subtle) -->
-  <g opacity="0.03" stroke="#ffffff">
+  <g opacity="0.025" stroke="#ffffff">
     <line x1="0" y1="166" x2="1500" y2="166" stroke-width="1"/>
     <line x1="0" y1="333" x2="1500" y2="333" stroke-width="1"/>
     <line x1="500" y1="0" x2="500" y2="500" stroke-width="1"/>
     <line x1="1000" y1="0" x2="1000" y2="500" stroke-width="1"/>
   </g>
 
-  <!-- Centered content group - safe zone for Twitter cropping -->
-  <g transform="translate(750, 250)">
-    <!-- Calendar Logo (left of center) -->
-    <g transform="translate(-420, -80)">
-      <svg viewBox="0 0 64 64" width="160" height="160" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Calendar base -->
-        <rect x="10" y="14" width="44" height="40" rx="4" fill="url(#calendarGradient)" stroke="url(#borderGradient)" stroke-width="2.5"/>
+  <!-- Decorative sparkles -->
+  <circle cx="200" cy="120" r="4" fill="#ffd700" opacity="0.7"/>
+  <circle cx="1300" cy="100" r="3" fill="#ff6b9d" opacity="0.6"/>
+  <circle cx="180" cy="380" r="3" fill="#9d4edd" opacity="0.6"/>
+  <circle cx="1320" cy="400" r="4" fill="#10b981" opacity="0.5"/>
+  <circle cx="400" cy="80" r="2" fill="#ffd700" opacity="0.5"/>
+  <circle cx="1100" cy="420" r="2" fill="#ff6b9d" opacity="0.5"/>
+  <circle cx="600" cy="400" r="3" fill="#9d4edd" opacity="0.4"/>
+  <circle cx="900" cy="90" r="3" fill="#10b981" opacity="0.4"/>
 
-        <!-- Calendar header bar -->
-        <rect x="10" y="14" width="44" height="10" rx="4" fill="url(#headerGradient)"/>
-        <rect x="10" y="20" width="44" height="4" fill="url(#headerGradient)"/>
+  <!-- Main Title: WALLETWRAPPED - centered, using Lexend -->
+  <text x="750" y="210" text-anchor="middle" font-family="Lexend, system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="100" font-weight="800" fill="url(#textGradient)" letter-spacing="-0.02em">
+    WALLETWRAPPED
+  </text>
 
-        <!-- Calendar rings/binding -->
-        <rect x="18" y="10" width="3" height="8" rx="1.5" fill="url(#borderGradient)"/>
-        <rect x="31" y="10" width="3" height="8" rx="1.5" fill="url(#borderGradient)"/>
-        <rect x="44" y="10" width="3" height="8" rx="1.5" fill="url(#borderGradient)"/>
+  <!-- Subheader - centered -->
+  <text x="750" y="290" text-anchor="middle" font-family="Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="28" font-weight="400" fill="#9ca3af">
+    Simply paste your wallet to receive your yearly trading highlights instantly
+  </text>
 
-        <!-- Calendar grid -->
-        <line x1="14" y1="28" x2="50" y2="28" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="14" y1="34" x2="50" y2="34" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="14" y1="40" x2="50" y2="40" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="14" y1="46" x2="50" y2="46" stroke="#2a2a3e" stroke-width="0.5"/>
-
-        <line x1="20" y1="24" x2="20" y2="50" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="26" y1="24" x2="26" y2="50" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="32" y1="24" x2="32" y2="50" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="38" y1="24" x2="38" y2="50" stroke="#2a2a3e" stroke-width="0.5"/>
-        <line x1="44" y1="24" x2="44" y2="50" stroke="#2a2a3e" stroke-width="0.5"/>
-
-        <!-- Trading activity indicators -->
-        <circle cx="17" cy="31" r="2.5" fill="#10b981"/>
-        <circle cx="23" cy="31" r="2.5" fill="#ffd700"/>
-        <circle cx="35" cy="37" r="2.5" fill="#ff6b9d"/>
-        <circle cx="41" cy="37" r="2.5" fill="#10b981"/>
-        <circle cx="29" cy="43" r="2.5" fill="#9d4edd"/>
-        <circle cx="47" cy="43" r="2.5" fill="#ffd700"/>
-
-        <!-- Chart trend line -->
-        <path
-          d="M 14 48 L 20 44 L 26 46 L 32 38 L 38 40 L 44 35 L 50 32"
-          stroke="url(#trendGradient)"
-          stroke-width="2.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          fill="none"
-          opacity="0.7"
-        />
-
-        <!-- Sparkle effects -->
-        <circle cx="56" cy="12" r="3" fill="#ffd700"/>
-        <circle cx="8" cy="18" r="2" fill="#ff6b9d"/>
-        <circle cx="54" cy="52" r="2" fill="#9d4edd"/>
-      </svg>
-    </g>
-
-    <!-- Main Title: WalletWrapped (right of logo) -->
-    <text x="-220" y="-25" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="72" font-weight="800" fill="url(#textGradient)">
-      WalletWrapped
-    </text>
-
-    <!-- Tagline -->
-    <text x="-220" y="30" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="26" font-weight="500" fill="#a0a0b0">
-      Your Year In The Trenches, Wrapped
-    </text>
-
-    <!-- Subtext -->
-    <text x="-220" y="70" font-family="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="400" fill="#606070">
-      Solana Wallet Analytics &amp; Year-End Review
-    </text>
-  </g>
-
-  <!-- Decorative sparkles (within safe area) -->
-  <circle cx="1150" cy="120" r="4" fill="#ffd700" opacity="0.8"/>
-  <circle cx="1180" cy="170" r="3" fill="#ff6b9d" opacity="0.6"/>
-  <circle cx="1120" cy="200" r="3" fill="#9d4edd" opacity="0.7"/>
-  <circle cx="350" cy="380" r="4" fill="#10b981" opacity="0.6"/>
-  <circle cx="380" cy="330" r="2" fill="#ffd700" opacity="0.5"/>
-  <circle cx="320" cy="350" r="2" fill="#ff6b9d" opacity="0.5"/>
+  <!-- Website URL -->
+  <text x="750" y="380" text-anchor="middle" font-family="Inter, system-ui, -apple-system, BlinkMacSystemFont, sans-serif" font-size="22" font-weight="500" fill="#606070">
+    walletwrapped.io
+  </text>
 
   <defs>
     <linearGradient id="bgGradient" x1="0" y1="0" x2="1500" y2="500" gradientUnits="userSpaceOnUse">
@@ -106,32 +52,10 @@
       <stop offset="1" stop-color="#0a0a12"/>
     </linearGradient>
 
-    <linearGradient id="textGradient" x1="-220" y1="-50" x2="500" y2="50" gradientUnits="userSpaceOnUse">
+    <linearGradient id="textGradient" x1="200" y1="150" x2="1300" y2="250" gradientUnits="userSpaceOnUse">
       <stop stop-color="#ffd700"/>
       <stop offset="0.5" stop-color="#ff6b9d"/>
       <stop offset="1" stop-color="#9d4edd"/>
-    </linearGradient>
-
-    <linearGradient id="calendarGradient" x1="10" y1="14" x2="54" y2="54" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1a1a2e"/>
-      <stop offset="1" stop-color="#0f0f1a"/>
-    </linearGradient>
-
-    <linearGradient id="headerGradient" x1="10" y1="14" x2="54" y2="24" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#2a2a42"/>
-      <stop offset="1" stop-color="#1a1a2e"/>
-    </linearGradient>
-
-    <linearGradient id="borderGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop stop-color="#ffd700"/>
-      <stop offset="0.5" stop-color="#ff6b9d"/>
-      <stop offset="1" stop-color="#9d4edd"/>
-    </linearGradient>
-
-    <linearGradient id="trendGradient" x1="14" y1="32" x2="50" y2="48" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#10b981"/>
-      <stop offset="0.5" stop-color="#ffd700"/>
-      <stop offset="1" stop-color="#ff6b9d"/>
     </linearGradient>
   </defs>
 </svg>

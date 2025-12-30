@@ -218,32 +218,79 @@ app.get('/api', (req, res) => {
   });
 });
 
-// Platform stats endpoint - returns wallet count for live counter
+// Platform stats endpoint - returns wallet count and platform-wide stats for ticker
 app.get('/api/stats', async (req, res) => {
-  // Prevent caching so counter updates in real-time
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.set('Pragma', 'no-cache');
-  res.set('Expires', '0');
+  // Cache for 30 seconds to reduce DB load while keeping stats relatively fresh
+  res.set('Cache-Control', 'public, max-age=30');
 
   try {
-    // Get count of all wallet analyses (completed, failed, or processing)
-    // This counts unique wallets that have ever been analyzed
-    const result = await query(`
+    // Get wallet counts and total transactions
+    const analysisStats = await query(`
       SELECT
         COUNT(DISTINCT wallet_address) as wallets_analyzed,
-        COUNT(*) as total_analyses
+        COUNT(*) as total_analyses,
+        COALESCE(SUM(total_transactions), 0) as total_transactions
       FROM wallet_analyses
+      WHERE analysis_status = 'completed'
     `);
 
-    const stats = result.rows[0];
+    // Get total volume (sum of all SOL spent + received across all positions)
+    const volumeStats = await query(`
+      SELECT
+        COALESCE(SUM(sol_spent + sol_received), 0) as total_volume_sol
+      FROM token_positions
+    `);
 
-    // Get active analyses count
+    // Get highest overall P&L (from highlights table)
+    const highestPnl = await query(`
+      SELECT value_primary, metadata
+      FROM highlights
+      WHERE highlight_type = 'overall_pnl'
+      ORDER BY value_primary DESC
+      LIMIT 1
+    `);
+
+    // Get biggest single trade win
+    const biggestWin = await query(`
+      SELECT value_primary, metadata
+      FROM highlights
+      WHERE highlight_type = 'biggest_win'
+      ORDER BY value_primary DESC
+      LIMIT 1
+    `);
+
+    // Get biggest single trade loss
+    const biggestLoss = await query(`
+      SELECT value_primary, metadata
+      FROM highlights
+      WHERE highlight_type = 'biggest_loss'
+      ORDER BY value_primary ASC
+      LIMIT 1
+    `);
+
+    const stats = analysisStats.rows[0];
+    const volume = volumeStats.rows[0];
     const activeAnalyses = AnalysisOrchestrator.getActiveCount();
 
     res.json({
       walletsAnalyzed: parseInt(stats.wallets_analyzed) || 0,
       totalAnalyses: parseInt(stats.total_analyses) || 0,
+      totalTransactions: parseInt(stats.total_transactions) || 0,
+      totalVolumeSol: parseFloat(volume.total_volume_sol) || 0,
       activeAnalyses: activeAnalyses,
+      // Leaderboard stats
+      highestPnl: highestPnl.rows[0] ? {
+        valueSol: parseFloat(highestPnl.rows[0].value_primary) || 0,
+        wallet: highestPnl.rows[0].metadata?.wallet_short || null
+      } : null,
+      biggestWin: biggestWin.rows[0] ? {
+        valueSol: parseFloat(biggestWin.rows[0].value_primary) || 0,
+        ticker: biggestWin.rows[0].metadata?.token_symbol || null
+      } : null,
+      biggestLoss: biggestLoss.rows[0] ? {
+        valueSol: parseFloat(biggestLoss.rows[0].value_primary) || 0,
+        ticker: biggestLoss.rows[0].metadata?.token_symbol || null
+      } : null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -252,7 +299,12 @@ app.get('/api/stats', async (req, res) => {
       error: 'Failed to fetch stats',
       walletsAnalyzed: 0,
       totalAnalyses: 0,
-      activeAnalyses: 0
+      totalTransactions: 0,
+      totalVolumeSol: 0,
+      activeAnalyses: 0,
+      highestPnl: null,
+      biggestWin: null,
+      biggestLoss: null
     });
   }
 });
