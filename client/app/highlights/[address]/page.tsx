@@ -4,8 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Logo from '@/components/Logo';
-import WalletCounter from '@/components/WalletCounter';
 import Fireworks from '@/components/Fireworks';
+import StatsTicker from '@/components/StatsTicker';
 
 // Format number with commas (e.g., 352898 -> 352,898)
 function formatNumberWithCommas(num: number): string {
@@ -924,7 +924,10 @@ ${summaryLines}`;
   const highlight = data.highlights[currentCard];
 
   return (
-    <main className="min-h-screen py-8 px-4 bg-dark-950 relative overflow-hidden">
+    <main className="min-h-screen bg-dark-950 relative overflow-hidden">
+      {/* Stats Ticker Bar */}
+      <StatsTicker />
+
       {/* Fireworks background effect */}
       <Fireworks />
 
@@ -971,13 +974,12 @@ ${summaryLines}`;
       <div className="absolute bottom-20 right-1/4 w-[400px] h-[400px] bg-festive-pink/5 rounded-full blur-[100px]" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary-500/5 rounded-full blur-[120px]" />
 
-      <div className="max-w-lg mx-auto relative z-10">
-        {/* Header with logo and counter */}
-        <div className="flex items-center justify-between mb-6">
+      <div className="max-w-lg mx-auto relative z-10 py-8 px-4">
+        {/* Header with centered logo */}
+        <div className="flex items-center justify-center mb-6">
           <Link href="/" className="hover:opacity-80 transition-opacity">
             <Logo size="small" />
           </Link>
-          <WalletCounter variant="compact" showActive={true} />
         </div>
 
         {/* Page Title */}

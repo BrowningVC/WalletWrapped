@@ -4,9 +4,9 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { io, Socket } from 'socket.io-client';
-import WalletCounter from '@/components/WalletCounter';
 import Fireworks from '@/components/Fireworks';
 import Logo from '@/components/Logo';
+import StatsTicker from '@/components/StatsTicker';
 
 // Transaction block flowing animation
 function TransactionStream({ isActive }: { isActive: boolean }) {
@@ -699,31 +699,36 @@ export default function AnalyzePage() {
 
   if (error) {
     return (
-      <main className="min-h-screen bg-dark-950 flex items-center justify-center px-4 relative overflow-hidden">
+      <main className="min-h-screen bg-dark-950 relative overflow-hidden">
+        {/* Stats Ticker Bar */}
+        <StatsTicker />
+
         {/* Background effects */}
         <Fireworks />
         <div className="absolute inset-0 bg-gradient-radial from-dark-800/30 via-dark-950 to-dark-950" />
         <div className="absolute top-20 left-1/4 w-[400px] h-[400px] bg-loss-500/10 rounded-full blur-[100px]" />
         <div className="absolute bottom-20 right-1/4 w-[300px] h-[300px] bg-festive-pink/5 rounded-full blur-[100px]" />
 
-        <div className="max-w-md w-full relative z-10">
-          <div className="bg-dark-900/80 backdrop-blur-md border border-loss-500/30 rounded-2xl p-8">
-            <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-loss-500/10 flex items-center justify-center">
-                <svg className="w-8 h-8 text-loss-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
+        <div className="flex items-center justify-center min-h-[calc(100vh-40px)] px-4">
+          <div className="max-w-md w-full relative z-10">
+            <div className="bg-dark-900/80 backdrop-blur-md border border-loss-500/30 rounded-2xl p-8">
+              <div className="text-center">
+                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-loss-500/10 flex items-center justify-center">
+                  <svg className="w-8 h-8 text-loss-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+
+                <h2 className="text-2xl font-bold mb-2 text-white">Analysis Failed</h2>
+                <p className="text-gray-400 mb-6">{error}</p>
+
+                <button
+                  onClick={handleCancel}
+                  className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple text-white font-semibold hover:opacity-90 transition-opacity"
+                >
+                  Try Another Wallet
+                </button>
               </div>
-
-              <h2 className="text-2xl font-bold mb-2 text-white">Analysis Failed</h2>
-              <p className="text-gray-400 mb-6">{error}</p>
-
-              <button
-                onClick={handleCancel}
-                className="w-full py-3 px-6 rounded-xl bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple text-white font-semibold hover:opacity-90 transition-opacity"
-              >
-                Try Another Wallet
-              </button>
             </div>
           </div>
         </div>
@@ -732,7 +737,10 @@ export default function AnalyzePage() {
   }
 
   return (
-    <main className="min-h-screen bg-dark-950 flex items-center justify-center px-4 relative overflow-hidden">
+    <main className="min-h-screen bg-dark-950 relative overflow-hidden">
+      {/* Stats Ticker Bar */}
+      <StatsTicker />
+
       {/* Fireworks background effect */}
       <Fireworks />
 
@@ -744,14 +752,14 @@ export default function AnalyzePage() {
       <div className="absolute bottom-20 right-1/4 w-[300px] h-[300px] bg-festive-pink/5 rounded-full blur-[100px]" />
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-festive-purple/5 rounded-full blur-[120px]" />
 
-      <div className="max-w-2xl w-full relative z-10">
-        {/* Header with logo and counter */}
-        <div className="flex items-center justify-between mb-6">
-          <Link href="/" className="hover:opacity-80 transition-opacity">
-            <Logo size="small" />
-          </Link>
-          <WalletCounter variant="compact" showActive={true} />
-        </div>
+      <div className="flex items-center justify-center min-h-[calc(100vh-40px)] px-4">
+        <div className="max-w-2xl w-full relative z-10">
+          {/* Header with logo */}
+          <div className="flex items-center justify-center mb-6">
+            <Link href="/" className="hover:opacity-80 transition-opacity">
+              <Logo size="small" />
+            </Link>
+          </div>
 
         {/* Main card */}
         <div className="bg-dark-900/80 backdrop-blur-md border border-dark-700/50 rounded-2xl p-8 animate-slide-up relative overflow-hidden">
@@ -1101,6 +1109,7 @@ export default function AnalyzePage() {
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
     </main>
