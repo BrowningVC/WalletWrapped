@@ -9,7 +9,8 @@ export default function LiveAnalysisCounter() {
   useEffect(() => {
     const fetchActiveCount = async () => {
       try {
-        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/monitor/active`);
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'https://api.walletwrapped.io';
+        const response = await fetch(`${apiUrl}/api/monitor/active`);
         if (response.ok) {
           const data = await response.json();
           // Inflate by 12 as baseline
