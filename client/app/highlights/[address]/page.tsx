@@ -6,6 +6,7 @@ import Link from 'next/link';
 import Logo from '@/components/Logo';
 import Fireworks from '@/components/Fireworks';
 import StatsTicker from '@/components/StatsTicker';
+import LiveAnalysisCounter from '@/components/LiveAnalysisCounter';
 
 // Format number with commas (e.g., 352898 -> 352,898)
 function formatNumberWithCommas(num: number): string {
@@ -721,7 +722,9 @@ export default function HighlightsPage() {
     }).join('\n');
     const shareText = `My 2025 in the Trenches Wrapped:
 
-${summaryLines}`;
+${summaryLines}
+
+(⚠️ paste the image then del this line)`;
 
     try {
       // Copy the summary card image to clipboard (all highlights in one)
@@ -792,7 +795,7 @@ ${summaryLines}`;
     } catch (error) {
       console.error('Share to X failed:', error);
       // Still open X even if clipboard failed
-      const fallbackText = `My 2025 in the Trenches Wrapped:\n\n${highlights.map(h => `${h.title}: ${h.value}`).join('\n')}`;
+      const fallbackText = `My 2025 in the Trenches Wrapped:\n\n${highlights.map(h => `${h.title}: ${h.value}`).join('\n')}\n\n(⚠️ paste the image then del this line)`;
       const tweetUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(fallbackText)}`;
       const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
       if (isMobile) {
@@ -988,31 +991,36 @@ ${summaryLines}`;
             <span className="text-white">Your </span>
             <span className="festive-gradient-text">2025 Wrapped</span>
           </h1>
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-gray-400 text-sm">Powered by</span>
-            <span className="text-sm font-bold bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple bg-clip-text text-transparent">$WRAPPED</span>
-            <button
-              onClick={copyTokenContract}
-              disabled={tokenContract === 'COMING_SOON'}
-              className={`p-1 rounded transition-all duration-200 ${
-                tokenContract === 'COMING_SOON'
-                  ? 'text-gray-600 cursor-not-allowed'
-                  : tokenCopied
-                    ? 'text-green-400'
-                    : 'text-gray-400 hover:text-festive-gold'
-              }`}
-              title={tokenContract === 'COMING_SOON' ? 'Token address coming soon' : 'Copy token address'}
-            >
-              {tokenCopied ? (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              )}
-            </button>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-400 text-sm">Powered by</span>
+              <span className="text-sm font-bold bg-gradient-to-r from-festive-gold via-festive-pink to-festive-purple bg-clip-text text-transparent">$WRAPPED</span>
+              <button
+                onClick={copyTokenContract}
+                disabled={tokenContract === 'COMING_SOON'}
+                className={`p-1 rounded transition-all duration-200 ${
+                  tokenContract === 'COMING_SOON'
+                    ? 'text-gray-600 cursor-not-allowed'
+                    : tokenCopied
+                      ? 'text-green-400'
+                      : 'text-gray-400 hover:text-festive-gold'
+                }`}
+                title={tokenContract === 'COMING_SOON' ? 'Token address coming soon' : 'Copy token address'}
+              >
+                {tokenCopied ? (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                ) : (
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            {/* Live Analysis Counter */}
+            <LiveAnalysisCounter />
           </div>
         </div>
 
