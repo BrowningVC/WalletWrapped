@@ -145,7 +145,7 @@ export default function HomePage() {
             <Logo size="small" />
 
             <div className="flex gap-6 text-sm text-gray-500">
-              <a href="https://x.com/WalletWrapped" target="_blank" rel="noopener noreferrer" className="hover:text-festive-gold transition-colors">
+              <a href="https://x.com/WalletWrappedio" target="_blank" rel="noopener noreferrer" className="hover:text-festive-gold transition-colors">
                 Twitter/X
               </a>
               <a href="https://helius.dev" target="_blank" rel="noopener noreferrer" className="hover:text-festive-gold transition-colors">
